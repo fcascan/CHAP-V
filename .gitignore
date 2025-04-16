@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+venv/
+env/
+
+# Logs and debug files
+*.log
+*.out
+*.err
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Python egg files
+*.egg
+*.egg-info/
+dist/
+build/
+
+# RKNN model files
+# assets/models/*.rknn
+
+# Output images
+# images/inference_output_cam*.jpg
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Configurations
+# *.ini
+# *.cfg
