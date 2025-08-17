@@ -29,15 +29,20 @@ This project demonstrates how to use the **RKNN Toolkit Lite** to perform object
 
 1. Clone this repository:
 ```bash
-   git clone https://github.com/your-repo/PythonYoloRKNPU.git
-   cd PythonYoloRKNPU
+git clone https://github.com/your-repo/PythonYoloRKNPU.git
+cd PythonYoloRKNPU
 ```
 2. Install the required Python packages:
 ```bash
-   pip install opencv-python-headless numpy
+pip install opencv-python numpy
 ```
-3. Ensure the RKNN Toolkit Lite is installed on your device. Follow the official RKNN Toolkit Lite installation guide.  
-  https://github.com/rockchip-linux/rknn-toolkit
+
+3. Install RKNN Toolkit Lite 2 automatically with pip:
+```bash
+pip install rknn-toolkit-lite2
+```
+If you have an Orange Pi 5, 5 Plus, 5 Max, or any device with RK3588, this command will install the correct version for your platform and Python.
+
 4. Connect 1 to 3 USB cameras to your device.
 
 ## Usage
@@ -97,15 +102,42 @@ PythonYoloRKNPU/
 The processed images will be saved in the images directory with bounding boxes and labels for detected objects.
 
 ## Troubleshooting
-1. Permission Denied:
-- Ensure you run the program with sudo to access the USB cameras and save files.
-  
-2. Camera Not Detected:
-- Verify the connected cameras using:
-  ```bash
-    ls /dev/video*
-  ```
-  Ensure the cameras are properly connected and supported by OpenCV.
+1. Required files in installation folder:
+    - The installation folder contains the dynamic library `librknnrt.so` and the `rknn_toolkit_lite` package.
+   - If you encounter errors about missing `librknnrt.so`, copy it from the `installation` folder to `/usr/lib/` or `/usr/lib/aarch64-linux-gnu/` as needed:
+      ```bash
+      sudo cp installation/librknnrt.so /usr/lib/
+      # for ARM64 (aarch64) systems
+      sudo cp installation/librknnrt.so /usr/lib/aarch64-linux-gnu/
+      ```
+    - You can also find the `rknn_toolkit_lite` wheel in this folder for manual installation if needed.
+2. pip install fails due to permissions or system package conflicts:
+    - If you see an error about system package conflicts or permissions when installing a package (such as rknn-toolkit-lite2 or opencv-python), try adding the --break-system-packages flag:
+       ```bash
+       pip install <package-name> --break-system-packages
+       ```
+    - Example:
+       ```bash
+       pip install rknn-toolkit-lite2 --break-system-packages
+       ```
+
+3. Permission Denied:
+   - Ensure you run the program with sudo to access the USB cameras and save files.
+
+4. Camera Not Detected:
+   - Verify the connected cameras using:
+     ```bash
+     ls /dev/video*
+     ```
+   - Ensure the cameras are properly connected and supported by OpenCV.
+
+5. OpenCV GUI Error (cv2.imshow):
+   - By default, this project recommends installing opencv-python, which supports GUI windows (cv2.imshow).
+   - If you are running on a headless system (no desktop environment), you may install opencv-python-headless instead:
+     ```bash
+     pip install opencv-python-headless
+     ```
+   - In that case, you must comment out or remove all cv2.imshow and related GUI code in your script. The program will still save output images to the images directory.
 
 ## Model Compatibility:
 Ensure the RKNN model is compatible with your NPU and matches the input size (640, 640).

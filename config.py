@@ -6,7 +6,7 @@ import os
 
 MAX_CAMERAS_TO_SCAN = 6
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "assets/models/yolo_quant_int8.rknn")
+MODEL_PATH = os.path.join(BASE_DIR, "assets/models/Crime_Detection_1-640-640-yolov11n.rknn")
 IMG_SIZE = (640, 640)
 FPS_TEXT_SIZE = 0.5
 LABEL_TEXT_SIZE = 0.4
