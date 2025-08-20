@@ -1,0 +1,4 @@
+Knife
+Pistol
+Rifle
+Stick-rod

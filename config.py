@@ -3,23 +3,57 @@
 by fcascan 2025
 """
 import os
+import configparser
 
-MAX_CAMERAS_TO_SCAN = 6
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "assets/models/Crime_Detection_1-640-640-yolov11n.rknn")
-IMG_SIZE = (640, 640)
-FPS_TEXT_SIZE = 0.5
-LABEL_TEXT_SIZE = 0.4
+config_ini = os.path.join(BASE_DIR, "config.ini")
+parser = configparser.ConfigParser()
+parser.read(config_ini)
 
-# COCO dataset; change for yours (if custom dataset used)
-##CLASSES = ("person", "bicycle", "car","motorbike ","aeroplane ","bus ","train","truck ","boat","traffic light",
-##            "fire hydrant","stop sign ","parking meter","bench","bird","cat","dog ","horse ","sheep","cow","elephant",
-##            "bear","zebra ","giraffe","backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball","kite",
-##            "baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","wine glass","cup","fork","knife ",
-##            "spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza ","donut","cake","chair","sofa",
-##            "pottedplant","bed","diningtable","toilet ","tvmonitor","laptop	","mouse	","remote ","keyboard ","cell phone","microwave ",
-##            "oven ","toaster","sink","refrigerator ","book","clock","vase","scissors ","teddy bear ","hair drier", "toothbrush ")
-CLASSES = ("person", "gun", "pistol", "revolver", "firearm", "knife", "machete", "katana", "dagger", "sword", "axe", "bat", "club", 
-           "bludgeon", "stick", "nunchaku", "shuriken", "throwing star", "crossbow", "spear", "harpoon", "boomerang", 
-           "slingshot", "catapult", "grenade", "explosive device", "machine gun", "shotgun", "assault rifle", "sniper rifle", "submachine gun",
-            "light machine gun", "heavy machine gun", "rocket launcher", "missile launcher", "flamethrower", "taser", "stun gun", "pepper spray")
+
+# INFERENCE DEVICE
+INFERENCE_DEVICE = parser.get("INFERENCE", "device", fallback="NPU").strip().upper()
+print(f"[config] INFERENCE_DEVICE: {INFERENCE_DEVICE}")
+
+
+# PATHS
+model_rknn_cfg = parser.get("PATHS", "model_rknn", fallback="assets/models/Crime_Detection_1-640-640-yolov11n.rknn")
+MODEL_PATH = os.path.join(BASE_DIR, model_rknn_cfg)
+print(f"[config] MODEL_PATH: {MODEL_PATH}")
+
+model_onnx_cfg = parser.get("PATHS", "model_onnx", fallback="assets/models/Crime_Detection_1-640-640-yolov11n.onnx")
+ONNX_MODEL_PATH = os.path.join(BASE_DIR, model_onnx_cfg)
+print(f"[config] ONNX_MODEL_PATH: {ONNX_MODEL_PATH}")
+
+
+# IMAGE
+img_width = parser.getint("IMAGE", "img_width", fallback=640)
+img_height = parser.getint("IMAGE", "img_height", fallback=640)
+IMG_SIZE = (img_width, img_height)
+print(f"[config] IMG_SIZE: {IMG_SIZE}")
+
+FPS_TEXT_SIZE = parser.getfloat("IMAGE", "fps_text_size", fallback=0.5)
+print(f"[config] FPS_TEXT_SIZE: {FPS_TEXT_SIZE}")
+LABEL_TEXT_SIZE = parser.getfloat("IMAGE", "label_text_size", fallback=0.4)
+print(f"[config] LABEL_TEXT_SIZE: {LABEL_TEXT_SIZE}")
+
+
+# CAMERA
+MAX_CAMERAS_TO_SCAN = parser.getint("CAMERA", "max_cameras_to_scan", fallback=6)
+print(f"[config] MAX_CAMERAS_TO_SCAN: {MAX_CAMERAS_TO_SCAN}")
+
+
+# CLASSES
+MODEL_LABELS_PATH = parser.get("PATHS", "model_labels", fallback=None)
+print(f"[config] MODEL_LABELS_PATH: {MODEL_LABELS_PATH}")
+labels = None
+if MODEL_LABELS_PATH and os.path.exists(os.path.join(BASE_DIR, MODEL_LABELS_PATH)):
+    with open(os.path.join(BASE_DIR, MODEL_LABELS_PATH), "r") as f:
+        labels = [line.strip() for line in f if line.strip()]
+    print(f"[config] Loaded labels from file: {labels}")
+else:
+    default_labels_cfg = parser.get("CLASSES", "default_labels", fallback="person")
+    labels = [name.strip() for name in default_labels_cfg.split(",")]
+    print(f"[config] Loaded default_labels from config: {labels}")
+CLASSES = tuple(labels)
+print(f"[config] CLASSES: {CLASSES}")
