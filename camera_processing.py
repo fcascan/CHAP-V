@@ -60,6 +60,11 @@ def process_cameras(yolo_postprocess_func):
         npu_thread = threading.Thread(target=log_npu_usage, daemon=True)
         npu_thread.start()
     print("Starting camera processing...")
+    # Estadísticas globales
+    camera_total_frames = [0] * len(cameras)
+    camera_inference_times = [[] for _ in range(len(cameras))]
+    camera_processing_times = [[] for _ in range(len(cameras))]
+    start_global = time.time()
     while True:
         for idx, cap in enumerate(cameras):
             ret, frame = cap.read()
@@ -73,6 +78,7 @@ def process_cameras(yolo_postprocess_func):
             failure_counters[idx] = 0
             start_time = time.time()
             img = cv2.resize(frame, IMG_SIZE)
+            start_inference = time.time()
             if INFERENCE_DEVICE == "NPU":
                 img_input = np.expand_dims(img, 0)
                 outputs = rknn_instances[idx].inference(inputs=[img_input])
@@ -82,8 +88,12 @@ def process_cameras(yolo_postprocess_func):
                 net.setInput(blob)
                 outputs = net.forward()
                 boxes, classes, scores = yolo_postprocess_func(outputs, frame.shape)
+            end_inference = time.time()
+            inf_time = end_inference - start_inference
+            camera_inference_times[idx].append(inf_time)
             end_time = time.time()
-            inf_time = end_time - start_time
+            total_frame_time = end_time - start_time
+            camera_processing_times[idx].append(total_frame_time)
             inftime_per_camera[idx].append(inf_time)
             if len(inftime_per_camera[idx]) > 30:
                 inftime_per_camera[idx].pop(0)
@@ -98,10 +108,13 @@ def process_cameras(yolo_postprocess_func):
                 if elapsed > 0:
                     display_fps = (len(display_timestamps[idx]) - 1) / elapsed
             imgs_to_draw[idx] = frame.copy()
-            cv2.putText(imgs_to_draw[idx], f"FPS: {display_fps:.2f}", (10, 30),
+            # Etiquetas igual que en modo video
+            cv2.putText(imgs_to_draw[idx], f"Frame: {camera_total_frames[idx]+1}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 0), 2)
-            cv2.putText(imgs_to_draw[idx], f"Avg inf: {avg_inf_time_ms:.1f} ms (30f)", (10, 55),
+            cv2.putText(imgs_to_draw[idx], f"Inf time: {avg_inf_time_ms:.1f} ms", (10, 55),
                         cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 255), 2)
+            cv2.putText(imgs_to_draw[idx], f"FPS: {display_fps:.2f}", (10, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (255, 255, 0), 2)
             if boxes is not None and classes is not None and scores is not None:
                 for b, label, s in [(box, CLASSES[c], score) for box, c, score in zip(boxes, classes, scores) if c < len(CLASSES)]:
                     x1, y1, x2, y2 = map(int, b)
@@ -115,15 +128,35 @@ def process_cameras(yolo_postprocess_func):
                 output_path = os.path.join(OUTPUT_DIR, f"inference_output_cam{idx}.jpg")
                 cv2.imwrite(output_path, imgs_to_draw[idx])
                 cv2.imshow(f"Detections Camera {idx}", imgs_to_draw[idx])
+            camera_total_frames[idx] += 1
         if cv2.waitKey(1) & 0xFF in [ord('q'), 27]:
             break
+    end_global = time.time()
     for cap in cameras:
         cap.release()
     cv2.destroyAllWindows()
-    for idx, ts_list in enumerate(display_timestamps):
-        if len(ts_list) > 1:
-            elapsed = ts_list[-1] - ts_list[0]
-            avg_fps = (len(ts_list) - 1) / elapsed if elapsed > 0 else 0.0
-            print(f"Average display FPS for camera {idx}: {avg_fps:.2f}")
+    # Estadísticas por cámara
+    print("\n" + "="*50)
+    print("CAMERA PROCESSING STATISTICS")
+    print("="*50)
+    for idx in range(len(cameras)):
+        print(f"Camera {idx}:")
+        print(f"  Total frames processed: {camera_total_frames[idx]}")
+        print(f"  Total processing time: {end_global - start_global:.2f} seconds")
+        if camera_inference_times[idx]:
+            avg_inf = np.mean(camera_inference_times[idx]) * 1000
+            min_inf = np.min(camera_inference_times[idx]) * 1000
+            max_inf = np.max(camera_inference_times[idx]) * 1000
+            print(f"  Average inference time: {avg_inf:.2f} ms")
+            print(f"  Min inference time: {min_inf:.2f} ms")
+            print(f"  Max inference time: {max_inf:.2f} ms")
+        if camera_processing_times[idx]:
+            avg_proc = np.mean(camera_processing_times[idx]) * 1000
+            print(f"  Average total frame processing time: {avg_proc:.2f} ms")
+        if display_timestamps[idx] and len(display_timestamps[idx]) > 1:
+            elapsed = display_timestamps[idx][-1] - display_timestamps[idx][0]
+            avg_fps = (len(display_timestamps[idx]) - 1) / elapsed if elapsed > 0 else 0.0
+            print(f"  Display FPS: {avg_fps:.2f}")
         else:
-            print(f"[ERROR] No frames were processed for camera {idx}.")
+            print(f"  [ERROR] No frames were processed for camera {idx}.")
+    print("="*50)
