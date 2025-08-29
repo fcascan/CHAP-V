@@ -29,7 +29,7 @@ from config import *
 if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
     from utils.rknn_post_processing import post_process
-    from utils.my_rknputop import log_npu_usage
+    from utils.my_htop import log_npu_usage
 
 # Disable logging for unnecessary messages
 logger = logging.getLogger()

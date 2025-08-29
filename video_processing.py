@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""video_processing.py
+by fcascan 2025
+"""
 import os
 import sys
 import cv2
@@ -159,12 +163,20 @@ def process_video(yolo_postprocess_func):
         print(f"Max inference time: {max(inference_times)*1000:.2f} ms")
         print("\nPROCESSOR USAGE STATISTICS")
         print("-" * 30)
-        if cpu_stats:
-            print(f"CPU Usage - Avg: {cpu_stats['avg']:.1f}%, Min: {cpu_stats['min']:.1f}%, Max: {cpu_stats['max']:.1f}%")
-        if INFERENCE_DEVICE == "NPU" and npu_stats:
-            print(f"NPU Usage - Avg: {npu_stats['avg']:.1f}%, Min: {npu_stats['min']:.1f}%, Max: {npu_stats['max']:.1f}%")
-        elif INFERENCE_DEVICE == "CPU":
-            print("NPU Usage - N/A (CPU inference mode)")
+        from utils.my_htop import get_processor_usage_stats
+        proc_stats = get_processor_usage_stats(INFERENCE_DEVICE)
+        if proc_stats['cpu']:
+            print(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")
+        else:
+            print("CPU Usage - N/A")
+        if proc_stats['npu']:
+            print(f"NPU Usage - Avg: {proc_stats['npu']['avg']:.1f}% (per core: {proc_stats['npu']['per_core']})")
+        else:
+            print("NPU Usage - N/A")
+        if proc_stats['gpu']:
+            print(f"GPU Usage - Last sample: {proc_stats['gpu']['avg']:.1f}%")
+        else:
+            print("GPU Usage - N/A")
         print("="*50)
     else:
         print("[ERROR] No frames were processed successfully.")

@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""camera_processing.py
+by fcascan 2025
+"""
 import cv2
 import time
 import logging
@@ -11,7 +15,7 @@ from config import *
 if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
     from utils.rknn_post_processing import post_process
-    from utils.my_rknputop import log_npu_usage
+    from utils.my_htop import log_npu_usage
 
 def process_cameras(yolo_postprocess_func):
     context = pyudev.Context()
@@ -56,9 +60,9 @@ def process_cameras(yolo_postprocess_func):
     inftime_per_camera = [[] for _ in range(len(cameras))]
     failure_counters = [0] * len(cameras)
     imgs_to_draw = [None] * len(cameras)
-    if INFERENCE_DEVICE == "NPU":
-        npu_thread = threading.Thread(target=log_npu_usage, daemon=True)
-        npu_thread.start()
+    # if INFERENCE_DEVICE == "NPU":
+        # npu_thread = threading.Thread(target=log_npu_usage, daemon=True)
+        # npu_thread.start()
     print("Starting camera processing...")
     # Estadísticas globales
     camera_total_frames = [0] * len(cameras)
@@ -135,7 +139,7 @@ def process_cameras(yolo_postprocess_func):
     for cap in cameras:
         cap.release()
     cv2.destroyAllWindows()
-    # Estadísticas por cámara
+    # Per-camera statistics
     print("\n" + "="*50)
     print("CAMERA PROCESSING STATISTICS")
     print("="*50)
@@ -159,4 +163,23 @@ def process_cameras(yolo_postprocess_func):
             print(f"  Display FPS: {avg_fps:.2f}")
         else:
             print(f"  [ERROR] No frames were processed for camera {idx}.")
+    print("="*50)
+
+    # Processor usage statistics (CPU/NPU/GPU)
+    print("\nPROCESSOR USAGE STATISTICS")
+    print("-" * 30)
+    from utils.my_htop import get_processor_usage_stats
+    proc_stats = get_processor_usage_stats(INFERENCE_DEVICE)
+    if proc_stats['cpu']:
+        print(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")
+    else:
+        print("CPU Usage - N/A")
+    if proc_stats['npu']:
+        print(f"NPU Usage - Avg: {proc_stats['npu']['avg']:.1f}% (per core: {proc_stats['npu']['per_core']})")
+    else:
+        print("NPU Usage - N/A")
+    if proc_stats['gpu']:
+        print(f"GPU Usage - Last sample: {proc_stats['gpu']['avg']:.1f}%")
+    else:
+        print("GPU Usage - N/A")
     print("="*50)
