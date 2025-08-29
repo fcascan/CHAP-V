@@ -11,6 +11,10 @@ parser = configparser.ConfigParser()
 parser.read(config_ini)
 
 
+# MODE
+BENCHMARK_MODE = parser.getboolean("MODE", "benchmark_mode", fallback=False)
+print(f"[config] BENCHMARK_MODE: {BENCHMARK_MODE}")
+
 # INFERENCE DEVICE
 INFERENCE_DEVICE = parser.get("INFERENCE", "device", fallback="NPU").strip().upper()
 print(f"[config] INFERENCE_DEVICE: {INFERENCE_DEVICE}")
@@ -24,6 +28,11 @@ print(f"[config] MODEL_PATH: {MODEL_PATH}")
 model_onnx_cfg = parser.get("PATHS", "model_onnx", fallback="assets/models/Crime_Detection_1-640-640-yolov11n.onnx")
 ONNX_MODEL_PATH = os.path.join(BASE_DIR, model_onnx_cfg)
 print(f"[config] ONNX_MODEL_PATH: {ONNX_MODEL_PATH}")
+
+# Video file path for video processing mode
+benchmark_video_cfg = parser.get("PATHS", "benchmark_video", fallback="assets/videos/benchmark.mp4")
+VIDEO_FILE_PATH = os.path.join(BASE_DIR, benchmark_video_cfg)
+print(f"[config] VIDEO_FILE_PATH: {VIDEO_FILE_PATH}")
 
 
 # IMAGE
