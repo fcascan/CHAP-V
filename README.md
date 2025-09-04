@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project demonstrates how to use the **RKNN Toolkit Lite** to perform object detection using a YOLO model on an **RKNN NPU** (Neural Processing Unit). The program supports multiple USB cameras (up to 3) and assigns each camera to a specific NPU core for parallel inference. The detected objects are displayed in real-time, and the processed frames are saved as images in the `images` directory.
+This project demonstrates how to use the **RKNN Toolkit Lite** to perform object detection using a YOLO model on an **RKNN NPU** (Neural Processing Unit). The program supports multiple USB cameras (up to 3) and assigns each camera to a specific NPU core for parallel inference. The detected objects are displayed in real-time, and the processed frames are saved as images in the `images` directory. 
 
 ## Features
 
