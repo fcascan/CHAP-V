@@ -1,6 +1,7 @@
 # Python YOLO RKNN/NPU
 
-Real-time object detection using YOLO models on RK3588 NPU with automatic dependency management.
+Real-time object detection using YOLO v11 models on RK3588 (with Orange Pi 5 Max).
+A project for comparison between CPU, GPU & NPU inference.
 
 ## Features
 
@@ -18,7 +19,7 @@ Real-time object detection using YOLO models on RK3588 NPU with automatic depend
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-repo/PythonYoloRKNPU.git
+git clone https://github.com/fcascan/PythonYoloRKNPU.git
 cd PythonYoloRKNPU
 sudo python3 main.py
 ```
@@ -59,3 +60,4 @@ This project is licensed under the MIT License.
 - YOLO Model (https://github.com/ultralytics/yolov5)
 - OpenCV (https://opencv.org/)
 - rknputop (https://github.com/ramonbroox/rknputop)
+- myrktop (https://github.com/mhl221135/myrktop)
