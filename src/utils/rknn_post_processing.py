@@ -3,7 +3,7 @@
 by fcascan 2025
 """
 import numpy as np
-from config import *
+from ..core.config import *
 from rknnlite.api import RKNNLite
 
 # Adjust for tasks (taken from yolov8 default cfg)

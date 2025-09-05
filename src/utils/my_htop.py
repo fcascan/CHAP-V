@@ -6,7 +6,7 @@ import os
 import time
 import logging
 import re
-from config import *
+from ..core.config import *
 
 SLEEP_TIME = 0.5
 

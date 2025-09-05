@@ -4,7 +4,7 @@ by fcascan 2025
 """
 import numpy as np
 import cv2
-from config import IMG_SIZE
+from ..core.config import IMG_SIZE
 
 def yolo_onnx_postprocess(outputs, img_shape, conf_thres=0.25, iou_thres=0.45):
     if isinstance(outputs, (list, tuple)):

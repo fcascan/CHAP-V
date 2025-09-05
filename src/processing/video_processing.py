@@ -9,11 +9,11 @@ import time
 import numpy as np
 import threading
 import psutil
-from config import *
+from ..core.config import *
 
 if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
-    from utils.rknn_post_processing import post_process
+    from ..utils.rknn_post_processing import post_process
 
 def process_video(yolo_postprocess_func):
     """Process video file and return statistics."""
@@ -163,7 +163,7 @@ def process_video(yolo_postprocess_func):
         print(f"Max inference time: {max(inference_times)*1000:.2f} ms")
         print("\nPROCESSOR USAGE STATISTICS")
         print("-" * 30)
-        from utils.my_htop import get_processor_usage_stats
+        from ..utils.my_htop import get_processor_usage_stats
         proc_stats = get_processor_usage_stats(INFERENCE_DEVICE)
         if proc_stats['cpu']:
             print(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")

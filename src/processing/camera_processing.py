@@ -10,12 +10,12 @@ import os
 import sys
 import numpy as np
 import pyudev
-from config import *
+from ..core.config import *
 
 if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
-    from utils.rknn_post_processing import post_process
-    from utils.my_htop import log_npu_usage
+    from ..utils.rknn_post_processing import post_process
+    from ..utils.my_htop import log_npu_usage
 
 def process_cameras(yolo_postprocess_func):
     context = pyudev.Context()
@@ -41,7 +41,7 @@ def process_cameras(yolo_postprocess_func):
         print(f"[ERROR] No cameras detected, at least one camera is required.")
         exit()
     print(f"Cameras detected = {len(cameras)}.")
-    OUTPUT_DIR = os.path.join(BASE_DIR, "images")
+    OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "images")
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
     if INFERENCE_DEVICE == "NPU":
@@ -168,7 +168,7 @@ def process_cameras(yolo_postprocess_func):
     # Processor usage statistics (CPU/NPU/GPU)
     print("\nPROCESSOR USAGE STATISTICS")
     print("-" * 30)
-    from utils.my_htop import get_processor_usage_stats
+    from ..utils.my_htop import get_processor_usage_stats
     proc_stats = get_processor_usage_stats(INFERENCE_DEVICE)
     if proc_stats['cpu']:
         print(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")

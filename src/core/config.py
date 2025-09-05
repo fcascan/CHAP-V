@@ -5,7 +5,7 @@ by fcascan 2025
 import os
 import configparser
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 config_ini = os.path.join(BASE_DIR, "config.ini")
 parser = configparser.ConfigParser()
 parser.read(config_ini)

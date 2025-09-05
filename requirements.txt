@@ -1,0 +1,12 @@
+# Core dependencies for YOLO RKNN/NPU processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+psutil>=5.9.0
+pyudev>=0.24.0
+
+# RKNN dependencies (for NPU inference)
+# Note: rknnlite will be installed from local wheel file
+# rknn_toolkit_lite2>=2.3.0
+
+# Optional: ONNX runtime for CPU fallback
+# onnxruntime>=1.15.0
