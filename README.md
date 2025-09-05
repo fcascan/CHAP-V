@@ -1,144 +1,53 @@
-# Python YOLO with RK3588 and Multiple USB Cameras
+# Python YOLO RKNN/NPU
 
-## Overview
-
-This project demonstrates how to use the **RKNN Toolkit Lite** to perform object detection using a YOLO model on an **RKNN NPU** (Neural Processing Unit). The program supports multiple USB cameras (up to 3) and assigns each camera to a specific NPU core for parallel inference. The detected objects are displayed in real-time, and the processed frames are saved as images in the `images` directory. 
+Real-time object detection using YOLO models on RK3588 NPU with automatic dependency management.
 
 ## Features
 
-- **Multiple USB Camera Support**: The program supports between 1 and 3 USB cameras connected simultaneously.
-- **NPU Core Assignment**: Each camera is assigned to a specific NPU core (`NPU_CORE_0`, `NPU_CORE_1`, `NPU_CORE_2`) for efficient parallel processing.
-- **Real-Time Object Detection**: The program performs real-time object detection using a YOLO model optimized for RKNN.
-- **Custom Object Classes**: The model is configured to detect a variety of objects, including weapons and other items.
-- **Output Images**: The processed frames with bounding boxes and labels are saved in the `images` directory.
-- **Average FPS Calculation**: The program calculates and displays the average FPS (frames per second) for each camera.
+- **Multi-camera support**: Up to 3 USB cameras with NPU core assignment
+- **Auto-installation**: Intelligent dependency detection and installation
+- **NPU acceleration**: RKNN toolkit with CPU fallback
+- **Real-time inference**: Live object detection with statistics
 
 ## Requirements
-
-### Hardware
-- A device with an RKNN-compatible NPU (e.g., RK3588 from Orange Pi 5).
-- 1 to 3 USB cameras.
-
-### Software
 - Python 3.x
-- RKNN Toolkit Lite 2.3.2 or later
+- RKNN Toolkit Lite 2.3.2
 - OpenCV
 - NumPy
 
-## Installation
+## Quick Start
 
-1. Clone this repository:
 ```bash
 git clone https://github.com/your-repo/PythonYoloRKNPU.git
 cd PythonYoloRKNPU
-```
-2. Install the required Python packages:
-```bash
-pip install opencv-python numpy
+sudo python3 main.py
 ```
 
-3. Install RKNN Toolkit Lite 2 automatically with pip:
-```bash
-pip install rknn-toolkit-lite2
-```
-If you have an Orange Pi 5, 5 Plus, 5 Max, or any device with RK3588, this command will install the correct version for your platform and Python.
+## Requirements
 
-4. Connect 1 to 3 USB cameras to your device.
-
-## Usage
-
-1. Run the program with superuser permissions:
-```bash
-   sudo python3 inference_test.py
-```
-2. The program will:
-- Detect connected USB cameras.
-- Assign each camera to an NPU core.
-- Perform real-time object detection and display the results in separate windows.
-- Save the processed frames in the images directory.
-3. Press q to exit the program.
+- RK3588 device (Orange Pi 5/5+/5 Max)
+- Python 3.7+ (aarch64)
+- USB cameras (optional when using benchmark mode)
 
 ## Configuration
 
-### Model Path
-The YOLO model file is located in assets/models/yolo_quant_int8.rknn. You can replace this file with your own RKNN model.
+Edit [`config.ini`](config.ini):
+- `benchmark_mode`: Video file vs camera mode
+- `device`: NPU or CPU inference
+- Model paths and detection parameters
 
-### Object Classes
-The object classes are defined in the CLASSES variable. You can modify this list to match your custom dataset.
+## Usage
 
-### Thresholds
-OBJ_THRESH: Object detection confidence threshold (default: 0.25).
-NMS_THRESH: Non-Maximum Suppression (NMS) threshold (default: 0.45).
+**Camera mode**: `benchmark_mode = false`
+**Video mode**: `benchmark_mode = true`
 
-### Image Size
-The input image size is set to (640, 640) by default. You can adjust this in the IMG_SIZE variable.
-
-## Project Structure
-
-PythonYoloRKNPU/
-├── assets/
-│   └── models/
-│       └── yolo_quant_int8.rknn  # YOLO model file
-├── images/                       # Directory for output images
-├── [inference_test.py](http://_vscodecontentref_/0)             # Main Python script
-└── README.md                     # Project documentation
-
-## Example Output
-
-```bash
-  Permisos verificados. Iniciando el programa...
-  Cámara 0 inicializada.
-  Cámara 1 inicializada.
-  Se detectaron 2 cámara(s).
-  RKNN para cámara 0 inicializado en NPU_CORE_0.
-  RKNN para cámara 1 inicializado en NPU_CORE_1.
-  Imagen de la cámara 0 guardada en: /path/to/images/inference_output_cam0.jpg
-  Imagen de la cámara 1 guardada en: /path/to/images/inference_output_cam1.jpg
-  Average FPS para la cámara 0: 25.34
-  Average FPS para la cámara 1: 24.87
-```
-
-## Saved Images
-The processed images will be saved in the images directory with bounding boxes and labels for detected objects.
+Press 'q' to exit. Results saved to `images/` directory.
 
 ## Troubleshooting
-1. Required files in installation folder:
-    - The installation folder contains the dynamic library `librknnrt.so` and the `rknn_toolkit_lite` package.
-   - If you encounter errors about missing `librknnrt.so`, copy it from the `installation` folder to `/usr/lib/` or `/usr/lib/aarch64-linux-gnu/` as needed:
-      ```bash
-      sudo cp installation/librknnrt.so /usr/lib/
-      # for ARM64 (aarch64) systems
-      sudo cp installation/librknnrt.so /usr/lib/aarch64-linux-gnu/
-      ```
-    - You can also find the `rknn_toolkit_lite` wheel in this folder for manual installation if needed.
-2. pip install fails due to permissions or system package conflicts:
-    - If you see an error about system package conflicts or permissions when installing a package (such as rknn-toolkit-lite2 or opencv-python), try adding the --break-system-packages flag:
-       ```bash
-       pip install <package-name> --break-system-packages
-       ```
-    - Example:
-       ```bash
-       pip install rknn-toolkit-lite2 --break-system-packages
-       ```
 
-3. Permission Denied:
-   - Ensure you run the program with sudo to access the USB cameras and save files.
-
-4. Camera Not Detected:
-   - Verify the connected cameras using:
-     ```bash
-     ls /dev/video*
-     ```
-   - Ensure the cameras are properly connected and supported by OpenCV.
-
-5. OpenCV GUI Error (cv2.imshow):
-   - By default, this project recommends installing opencv-python, which supports GUI windows (cv2.imshow).
-   - If you are running on a headless system (no desktop environment), you may install opencv-python-headless instead:
-     ```bash
-     pip install opencv-python-headless
-     ```
-   - In that case, you must comment out or remove all cv2.imshow and related GUI code in your script. The program will still save output images to the images directory.
-
+- **No cameras**: Check `ls /dev/video*`
+- **Permission denied**: Use `sudo`
+- **RKNN fails**: Program auto-switches to CPU mode
 ## Model Compatibility:
 Ensure the RKNN model is compatible with your NPU and matches the input size (640, 640).
 
