@@ -14,6 +14,32 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 
+def check_gpu_availability():
+    """Check if GPU acceleration is available via OpenCL (Mali G610)."""
+    try:
+        import cv2
+        
+        # Check if OpenCL is available in OpenCV
+        if not cv2.ocl.haveOpenCL():
+            return False, "OpenCL not available in OpenCV"
+        
+        # Check if DNN module supports OpenCL target
+        if not hasattr(cv2.dnn, 'DNN_TARGET_OPENCL'):
+            return False, "DNN_TARGET_OPENCL not available"
+        
+        # Try to enable OpenCL
+        cv2.ocl.setUseOpenCL(True)
+        if not cv2.ocl.useOpenCL():
+            return False, "Failed to enable OpenCL"
+        
+        return True, "OpenCL GPU acceleration available (Mali G610)"
+        
+    except ImportError:
+        return False, "OpenCV not available"
+    except Exception as e:
+        return False, f"GPU check failed: {e}"
+
+
 def check_and_install_dependencies():
     """Check if dependencies are installed, if not, run the installer."""
     try:

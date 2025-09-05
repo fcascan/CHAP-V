@@ -6,9 +6,14 @@ import os
 import time
 import logging
 import re
+import threading
 from ..core.config import *
 
 SLEEP_TIME = 0.5
+
+# Global variables for continuous monitoring
+gpu_usage_samples = []
+monitoring_active = False
 
 def get_npu_info():
     try:
@@ -91,15 +96,15 @@ def get_cpu_info():
     return cpu_loads, cpu_freqs
 
 def get_gpu_info():
-    gpu_load_path = parser.get("MY_HTOP_PATH", "gpu_load_path", fallback="/sys/class/devfreq/fb000000.gpu-panthor/load")
-    gpu_freq_path = parser.get("MY_HTOP_PATH", "gpu_freq_path", fallback="/sys/class/devfreq/fb000000.gpu-panthor/cur_freq")
+    gpu_load_path = parser.get("MY_HTOP_PATH", "gpu_load_path", fallback="/sys/devices/platform/fb000000.gpu/devfreq/fb000000.gpu/load")
+    gpu_freq_path = parser.get("MY_HTOP_PATH", "gpu_freq_path", fallback="/sys/devices/platform/fb000000.gpu/devfreq/fb000000.gpu/cur_freq")
     if not os.path.exists(gpu_load_path) or not os.path.exists(gpu_freq_path):
         return None, None
     try:
         with open(gpu_load_path, "r") as f:
             raw_line = f.read().strip()
-        fields = re.split(r'[@ ]+', raw_line)
-        load_str = fields[0].rstrip('%')
+        # Format is like "15@1000000000Hz", extract the percentage
+        load_str = raw_line.split('@')[0]
         gpu_load = int(load_str)
     except Exception:
         gpu_load = 0
@@ -111,16 +116,43 @@ def get_gpu_info():
         gpu_freq = 0
     return gpu_load, gpu_freq
 
+def log_gpu_usage():
+    """Continuous GPU monitoring function (similar to NPU monitoring)"""
+    global gpu_usage_samples, monitoring_active
+    while monitoring_active:
+        gpu_load, gpu_freq = get_gpu_info()
+        if gpu_load is not None:
+            gpu_usage_samples.append(gpu_load)
+            # Keep only last 100 samples to avoid memory issues
+            if len(gpu_usage_samples) > 100:
+                gpu_usage_samples.pop(0)
+        time.sleep(SLEEP_TIME)
+
+def start_gpu_monitoring():
+    """Start GPU monitoring thread"""
+    global monitoring_active
+    monitoring_active = True
+    gpu_thread = threading.Thread(target=log_gpu_usage, daemon=True)
+    gpu_thread.start()
+    return gpu_thread
+
+def stop_gpu_monitoring():
+    """Stop GPU monitoring"""
+    global monitoring_active
+    monitoring_active = False
+
 def get_processor_usage_stats(inference_device="NPU"):
     """Returns a dict with CPU, NPU, and GPU usage statistics."""
     import psutil
     stats = {}
+    
     # CPU usage
     try:
         cpu_percent = psutil.cpu_percent(interval=1, percpu=False)
         stats['cpu'] = { 'avg': cpu_percent }
     except Exception:
         stats['cpu'] = None
+    
     # NPU usage
     if inference_device == "NPU":
         try:
@@ -134,13 +166,21 @@ def get_processor_usage_stats(inference_device="NPU"):
             stats['npu'] = None
     else:
         stats['npu'] = None
-    # GPU usage
+    
+    # GPU usage - now using averaged samples from continuous monitoring
+    global gpu_usage_samples
     try:
-        gpu_load, _ = get_gpu_info()
-        if gpu_load is not None:
-            stats['gpu'] = { 'avg': gpu_load }
+        if len(gpu_usage_samples) > 0:
+            avg_gpu = sum(gpu_usage_samples) / len(gpu_usage_samples)
+            stats['gpu'] = { 'avg': avg_gpu, 'samples': len(gpu_usage_samples) }
         else:
-            stats['gpu'] = None
+            # Fallback to single sample if no continuous monitoring
+            gpu_load, _ = get_gpu_info()
+            if gpu_load is not None:
+                stats['gpu'] = { 'avg': gpu_load, 'samples': 1 }
+            else:
+                stats['gpu'] = None
     except Exception:
         stats['gpu'] = None
+    
     return stats

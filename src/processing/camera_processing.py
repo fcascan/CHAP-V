@@ -16,6 +16,8 @@ if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
     from ..utils.rknn_post_processing import post_process
     from ..utils.my_htop import log_npu_usage
+elif INFERENCE_DEVICE == "GPU":
+    from ..utils.my_htop import start_gpu_monitoring, stop_gpu_monitoring
 
 def process_cameras(yolo_postprocess_func):
     context = pyudev.Context()
@@ -55,7 +57,45 @@ def process_cameras(yolo_postprocess_func):
             print(f"[Camera {idx}] Model loaded on NPU Core {core}.")
     else:
         net = cv2.dnn.readNetFromONNX(ONNX_MODEL_PATH)
-        print(f"ONNX model loaded for CPU inference: {ONNX_MODEL_PATH}")
+        gpu_backend_enabled = False
+        
+        # Configure GPU backend if available (OpenCL for Mali G610)
+        if INFERENCE_DEVICE == "GPU":
+            try:
+                # Check if OpenCL is available
+                if not cv2.ocl.haveOpenCL():
+                    raise Exception("OpenCL not available")
+                
+                if not hasattr(cv2.dnn, 'DNN_TARGET_OPENCL'):
+                    raise Exception("DNN_TARGET_OPENCL not available")
+                
+                # Enable OpenCL and test GPU backend
+                cv2.ocl.setUseOpenCL(True)
+                net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+                net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
+                
+                # Create a small test to verify OpenCL works
+                test_blob = cv2.dnn.blobFromImage(np.zeros((640, 640, 3), dtype=np.uint8), 1/255.0, (640, 640), swapRB=True, crop=False)
+                net.setInput(test_blob)
+                net.forward()  # This will fail if OpenCL is not properly set up
+                
+                gpu_backend_enabled = True
+                print(f"ONNX model loaded for GPU inference (OpenCL): {ONNX_MODEL_PATH}")
+            except Exception as e:
+                print(f"[WARNING] GPU initialization failed, falling back to CPU: {e}")
+                gpu_backend_enabled = False
+        
+        if not gpu_backend_enabled:
+            net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+            net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+            print(f"ONNX model loaded for CPU inference: {ONNX_MODEL_PATH}")
+    
+    # Start GPU monitoring if using GPU inference
+    gpu_monitor_thread = None
+    if INFERENCE_DEVICE == "GPU":
+        gpu_monitor_thread = start_gpu_monitoring()
+        print("[INFO] GPU monitoring started")
+    
     display_timestamps = [[] for _ in range(len(cameras))]
     inftime_per_camera = [[] for _ in range(len(cameras))]
     failure_counters = [0] * len(cameras)
@@ -87,7 +127,7 @@ def process_cameras(yolo_postprocess_func):
                 img_input = np.expand_dims(img, 0)
                 outputs = rknn_instances[idx].inference(inputs=[img_input])
                 boxes, classes, scores = post_process(outputs)
-            else:
+            else:  # GPU or CPU
                 blob = cv2.dnn.blobFromImage(img, 1/255.0, IMG_SIZE, swapRB=True, crop=False)
                 net.setInput(blob)
                 outputs = net.forward()
@@ -136,6 +176,12 @@ def process_cameras(yolo_postprocess_func):
         if cv2.waitKey(1) & 0xFF in [ord('q'), 27]:
             break
     end_global = time.time()
+    
+    # Stop GPU monitoring if it was started
+    if INFERENCE_DEVICE == "GPU" and gpu_monitor_thread:
+        stop_gpu_monitoring()
+        print("[INFO] GPU monitoring stopped")
+    
     for cap in cameras:
         cap.release()
     cv2.destroyAllWindows()
@@ -179,7 +225,8 @@ def process_cameras(yolo_postprocess_func):
     else:
         print("NPU Usage - N/A")
     if proc_stats['gpu']:
-        print(f"GPU Usage - Last sample: {proc_stats['gpu']['avg']:.1f}%")
+        samples_info = f" ({proc_stats['gpu']['samples']} samples)" if 'samples' in proc_stats['gpu'] else ""
+        print(f"GPU Usage - Avg: {proc_stats['gpu']['avg']:.1f}%{samples_info}")
     else:
         print("GPU Usage - N/A")
     print("="*50)

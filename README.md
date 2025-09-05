@@ -11,10 +11,13 @@ A project for comparison between CPU, GPU & NPU inference.
 - **Real-time inference**: Live object detection with statistics
 
 ## Requirements
-- Python 3.x
+
+- RK3588 device (Orange Pi 5/5+/5 Max)
+- Python 3.7+ (aarch64)
 - RKNN Toolkit Lite 2.3.2
 - OpenCV
 - NumPy
+- USB cameras (optional when using benchmark mode)
 
 ## Quick Start
 
@@ -24,31 +27,31 @@ cd PythonYoloRKNPU
 sudo python3 main.py
 ```
 
-## Requirements
-
-- RK3588 device (Orange Pi 5/5+/5 Max)
-- Python 3.7+ (aarch64)
-- USB cameras (optional when using benchmark mode)
-
 ## Configuration
 
 Edit [`config.ini`](config.ini):
 - `benchmark_mode`: Video file vs camera mode
-- `device`: NPU or CPU inference
+- `device`: NPU, GPU or CPU inference
 - Model paths and detection parameters
 
 ## Usage
 
+**Multi-Device Inference Support**
+- **NPU Mode**: `device = NPU` Uses RKNN Lite API with RK3588 Neural Processing Unit
+- **GPU Mode**: `device = GPU` Uses OpenCV DNN with OpenCL backend for Mali G610 GPU
+- **CPU Mode**: `device = CPU` Uses OpenCV DNN with CPU backend
+
 **Camera mode**: `benchmark_mode = false`
 **Video mode**: `benchmark_mode = true`
 
-Press 'q' to exit. Results saved to `images/` directory.
+Press 'q' to exit. Results displayed on terminal.
 
 ## Troubleshooting
 
 - **No cameras**: Check `ls /dev/video*`
 - **Permission denied**: Use `sudo`
 - **RKNN fails**: Program auto-switches to CPU mode
+
 ## Model Compatibility:
 Ensure the RKNN model is compatible with your NPU and matches the input size (640, 640).
 
