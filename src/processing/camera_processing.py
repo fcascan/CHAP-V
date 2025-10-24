@@ -10,16 +10,29 @@ import os
 import sys
 import numpy as np
 import pyudev
-from ..core.config import *
-
-if INFERENCE_DEVICE == "NPU":
-    from rknnlite.api import RKNNLite
-    from ..utils.rknn_post_processing import post_process
-    from ..utils.my_htop import log_npu_usage
-elif INFERENCE_DEVICE == "GPU":
-    from ..utils.my_htop import start_gpu_monitoring, stop_gpu_monitoring
+from ..core import config
 
 def process_cameras(yolo_postprocess_func):
+    def reload_display_config():
+        """Reload display-related configuration that can change during processing."""
+        return {
+            'label_text_size': config.LABEL_TEXT_SIZE,
+            'fps_text_size': config.FPS_TEXT_SIZE,
+            'classes': config.CLASSES
+        }
+    
+    # Get current configuration dynamically
+    current_device = config.INFERENCE_DEVICE
+    current_model_path = config.MODEL_PATH
+    current_onnx_path = config.ONNX_MODEL_PATH
+    current_img_size = config.IMG_SIZE
+    current_classes = config.CLASSES
+    current_max_cameras = config.MAX_CAMERAS_TO_SCAN
+    current_label_text_size = config.LABEL_TEXT_SIZE
+    current_fps_text_size = config.FPS_TEXT_SIZE
+    
+    print(f"Starting camera processing with device: {current_device}")
+    
     context = pyudev.Context()
     video_devices = []
     for device in context.list_devices(subsystem='video4linux'):
@@ -30,7 +43,7 @@ def process_cameras(yolo_postprocess_func):
                 video_devices.append(idx)
             except ValueError:
                 continue
-    video_devices = sorted(set(video_devices))[:MAX_CAMERAS_TO_SCAN]
+    video_devices = sorted(set(video_devices))[:current_max_cameras]
     cameras = []
     for i in video_devices:
         cap = cv2.VideoCapture(i)
@@ -46,21 +59,37 @@ def process_cameras(yolo_postprocess_func):
     OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "images")
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
-    if INFERENCE_DEVICE == "NPU":
-        npu_cores = [RKNNLite.NPU_CORE_0, RKNNLite.NPU_CORE_1, RKNNLite.NPU_CORE_2]
-        rknn_instances = []
-        for idx, core in enumerate(npu_cores[:len(cameras)]):
-            rknn = RKNNLite()
-            rknn.load_rknn(MODEL_PATH)
-            rknn.init_runtime(core_mask=core)
-            rknn_instances.append(rknn)
-            print(f"[Camera {idx}] Model loaded on NPU Core {core}.")
+        
+    # Initialize inference engine based on current device configuration
+    rknn_instances = []
+    net = None
+    gpu_backend_enabled = False
+    
+    if current_device == "NPU":
+        try:
+            from rknnlite.api import RKNNLite
+            from ..utils.rknn_post_processing import post_process
+            from ..utils.my_htop import log_npu_usage
+            
+            npu_cores = [RKNNLite.NPU_CORE_0, RKNNLite.NPU_CORE_1, RKNNLite.NPU_CORE_2]
+            for idx, core in enumerate(npu_cores[:len(cameras)]):
+                rknn = RKNNLite()
+                rknn.load_rknn(current_model_path)
+                rknn.init_runtime(core_mask=core)
+                rknn_instances.append(rknn)
+                print(f"[Camera {idx}] Model loaded on NPU Core {core}.")
+        except ImportError as e:
+            print(f"[ERROR] Failed to import NPU modules: {e}")
+            return
     else:
-        net = cv2.dnn.readNetFromONNX(ONNX_MODEL_PATH)
-        gpu_backend_enabled = False
+        net = cv2.dnn.readNetFromONNX(current_onnx_path)
         
         # Configure GPU backend if available (OpenCL for Mali G610)
-        if INFERENCE_DEVICE == "GPU":
+        if current_device == "GPU":
+            try:
+                from ..utils.my_htop import start_gpu_monitoring, stop_gpu_monitoring
+            except ImportError as e:
+                print(f"[WARNING] Failed to import GPU monitoring modules: {e}")
             try:
                 # Check if OpenCL is available
                 if not cv2.ocl.haveOpenCL():
@@ -75,7 +104,7 @@ def process_cameras(yolo_postprocess_func):
                 net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
                 
                 # Create a small test to verify OpenCL works
-                test_blob = cv2.dnn.blobFromImage(np.zeros((640, 640, 3), dtype=np.uint8), 1/255.0, (640, 640), swapRB=True, crop=False)
+                test_blob = cv2.dnn.blobFromImage(np.zeros((*current_img_size, 3), dtype=np.uint8), 1/255.0, current_img_size, swapRB=True, crop=False)
                 net.setInput(test_blob)
                 net.forward()  # This will fail if OpenCL is not properly set up
                 
@@ -88,12 +117,16 @@ def process_cameras(yolo_postprocess_func):
         if not gpu_backend_enabled:
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-            print(f"ONNX model loaded for CPU inference: {ONNX_MODEL_PATH}")
+            print(f"ONNX model loaded for CPU inference: {current_onnx_path}")
     
     # Start GPU monitoring if using GPU inference
     gpu_monitor_thread = None
-    if INFERENCE_DEVICE == "GPU":
-        gpu_monitor_thread = start_gpu_monitoring()
+    if current_device == "GPU":
+        try:
+            gpu_monitor_thread = start_gpu_monitoring()
+        except NameError:
+            gpu_monitor_thread = None
+            print("[WARNING] GPU monitoring not available")
         print("[INFO] GPU monitoring started")
     
     display_timestamps = [[] for _ in range(len(cameras))]
@@ -109,6 +142,7 @@ def process_cameras(yolo_postprocess_func):
     camera_inference_times = [[] for _ in range(len(cameras))]
     camera_processing_times = [[] for _ in range(len(cameras))]
     start_global = time.time()
+    frame_counter = 0
     while True:
         for idx, cap in enumerate(cameras):
             ret, frame = cap.read()
@@ -120,15 +154,23 @@ def process_cameras(yolo_postprocess_func):
                     sys.exit(1)
                 continue
             failure_counters[idx] = 0
+            
+            # Reload display configuration every 50 frames to catch web updates
+            if frame_counter % 50 == 0:
+                display_config = reload_display_config()
+                current_classes = display_config['classes']
+                current_label_text_size = display_config['label_text_size']
+                current_fps_text_size = display_config['fps_text_size']
+            
             start_time = time.time()
-            img = cv2.resize(frame, IMG_SIZE)
+            img = cv2.resize(frame, current_img_size)
             start_inference = time.time()
-            if INFERENCE_DEVICE == "NPU":
+            if current_device == "NPU" and idx < len(rknn_instances):
                 img_input = np.expand_dims(img, 0)
                 outputs = rknn_instances[idx].inference(inputs=[img_input])
                 boxes, classes, scores = post_process(outputs)
             else:  # GPU or CPU
-                blob = cv2.dnn.blobFromImage(img, 1/255.0, IMG_SIZE, swapRB=True, crop=False)
+                blob = cv2.dnn.blobFromImage(img, 1/255.0, current_img_size, swapRB=True, crop=False)
                 net.setInput(blob)
                 outputs = net.forward()
                 boxes, classes, scores = yolo_postprocess_func(outputs, frame.shape)
@@ -153,33 +195,39 @@ def process_cameras(yolo_postprocess_func):
                     display_fps = (len(display_timestamps[idx]) - 1) / elapsed
             imgs_to_draw[idx] = frame.copy()
             # Etiquetas igual que en modo video
-            cv2.putText(imgs_to_draw[idx], f"Frame: {camera_total_frames[idx]+1}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 0), 2)
+                                    cv2.putText(imgs_to_draw[idx], f"Cam {idx}: {inf_time:.1f} ms", (10, 30 + idx*25),
+                        cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 0), 2)
             cv2.putText(imgs_to_draw[idx], f"Inf time: {avg_inf_time_ms:.1f} ms", (10, 55),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 255), 2)
             cv2.putText(imgs_to_draw[idx], f"FPS: {display_fps:.2f}", (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (255, 255, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (255, 255, 0), 2)
             if boxes is not None and classes is not None and scores is not None:
-                for b, label, s in [(box, CLASSES[c], score) for box, c, score in zip(boxes, classes, scores) if c < len(CLASSES)]:
-                    x1, y1, x2, y2 = map(int, b)
-                    red = int(255 * s)
-                    green = int(255 * (1 - s))
-                    score_color = (0, green, red)
-                    cv2.rectangle(imgs_to_draw[idx], (x1, y1), (x2, y2), score_color, 2)
-                    cv2.putText(imgs_to_draw[idx], f"{label}: {s:.2f}", (x1 + 5, y1 + 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, LABEL_TEXT_SIZE, score_color, 2)
+                for box, cls, score in zip(boxes, classes, scores):
+                    if cls < len(current_classes):
+                        x1, y1, x2, y2 = map(int, box)
+                        label = current_classes[cls]
+                        red = int(255 * score)
+                        green = int(255 * (1 - score))
+                        score_color = (0, green, red)
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), score_color, 2)
+                        cv2.putText(frame, f"{label}: {score:.2f}", (x1 + 5, y1 + 15),
+                                    cv2.FONT_HERSHEY_SIMPLEX, current_label_text_size, score_color, 2)
             if imgs_to_draw[idx] is not None:
                 output_path = os.path.join(OUTPUT_DIR, f"inference_output_cam{idx}.jpg")
                 cv2.imwrite(output_path, imgs_to_draw[idx])
                 cv2.imshow(f"Detections Camera {idx}", imgs_to_draw[idx])
             camera_total_frames[idx] += 1
+        frame_counter += 1
         if cv2.waitKey(1) & 0xFF in [ord('q'), 27]:
             break
     end_global = time.time()
     
     # Stop GPU monitoring if it was started
-    if INFERENCE_DEVICE == "GPU" and gpu_monitor_thread:
-        stop_gpu_monitoring()
+    if current_device == "GPU" and gpu_monitor_thread:
+        try:
+            stop_gpu_monitoring()
+        except NameError:
+            print("[WARNING] GPU monitoring stop function not available")
         print("[INFO] GPU monitoring stopped")
     
     for cap in cameras:
@@ -215,7 +263,7 @@ def process_cameras(yolo_postprocess_func):
     print("\nPROCESSOR USAGE STATISTICS")
     print("-" * 30)
     from ..utils.my_htop import get_processor_usage_stats
-    proc_stats = get_processor_usage_stats(INFERENCE_DEVICE)
+    proc_stats = get_processor_usage_stats(current_device)
     if proc_stats['cpu']:
         print(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")
     else:

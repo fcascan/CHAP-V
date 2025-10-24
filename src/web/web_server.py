@@ -118,17 +118,21 @@ class WebServer:
         @self.app.route('/api/config', methods=['GET'])
         def get_config():
             """Get current configuration"""
+            # Import fresh values to ensure we get the latest configuration
+            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH
+            from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
+            from ..core.config import MAX_CAMERAS_TO_SCAN, CLASSES
+            
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
                 'inference_device': INFERENCE_DEVICE,
-                'model_paths': {
-                    'rknn': MODEL_PATH,
-                    'onnx': ONNX_MODEL_PATH,
-                    'labels': MODEL_LABELS_PATH
+                'paths': {
+                    'model_rknn': MODEL_PATH,
+                    'model_onnx': ONNX_MODEL_PATH,
+                    'video_file': VIDEO_FILE_PATH
                 },
                 'image_config': {
-                    'width': IMG_SIZE[0],
-                    'height': IMG_SIZE[1],
+                    'img_size': IMG_SIZE,
                     'fps_text_size': FPS_TEXT_SIZE,
                     'label_text_size': LABEL_TEXT_SIZE
                 },
@@ -162,8 +166,18 @@ class WebServer:
                 # Write updated config
                 with open(config_path, 'w') as configfile:
                     parser.write(configfile)
+                
+                # Reload configuration to make changes effective immediately
+                from ..core.config import reload_config
+                updated_config = reload_config()
+                
+                # Notify about changes via SocketIO
+                self.socketio.emit('config_updated', {
+                    'message': 'Configuration updated and reloaded',
+                    'config': updated_config
+                })
                     
-                return jsonify({'status': 'success', 'message': 'Configuration updated successfully'})
+                return jsonify({'status': 'success', 'message': 'Configuration updated and reloaded successfully'})
                 
             except Exception as e:
                 return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -198,6 +212,9 @@ class WebServer:
         @self.app.route('/api/status')
         def get_status():
             """Get current system status"""
+            # Import fresh values to ensure we get the latest configuration
+            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE
+            
             status = {
                 'processing_active': self.processing_active,
                 'current_mode': 'benchmark' if BENCHMARK_MODE else 'camera',
@@ -349,7 +366,10 @@ class WebServer:
             # Setup system dependencies and permissions
             setup_system()
             
-            # Setup and configure inference device
+            # Import fresh configuration values
+            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE
+            
+            # Setup and configure inference device with current config
             actual_device, rknn_available, rknn_modules = setup_inference_device(INFERENCE_DEVICE)
             
             # Disable unnecessary logging

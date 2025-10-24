@@ -5,6 +5,7 @@ class YOLOWebInterface {
         this.socket = null;
         this.autoScroll = true;
         this.connectionStatus = 'disconnected';
+        this.processing_active = false;
         this.charts = {};
         this.dataHistory = {
             cpu_cores: [], // Array of arrays, one per core
@@ -67,6 +68,14 @@ class YOLOWebInterface {
             console.error('Socket error:', error);
             this.addConsoleMessage('ERROR', 'Socket connection error: ' + error);
         });
+        
+        this.socket.on('config_updated', (data) => {
+            console.log('Configuration updated:', data);
+            this.addConsoleMessage('INFO', data.message);
+            // Reload configuration display
+            this.loadConfig();
+            this.refreshStatus();
+        });
     }
 
     initUI() {
@@ -124,16 +133,31 @@ class YOLOWebInterface {
             const response = await fetch('/api/config');
             const config = await response.json();
             
-            // Update form fields
-            document.getElementById('benchmark-mode').value = config.benchmark_mode.toString();
-            document.getElementById('inference-device-select').value = config.inference_device;
-            document.getElementById('max-cameras').value = config.camera_config.max_cameras;
+            // Update form fields with validation
+            const benchmarkMode = document.getElementById('benchmark-mode');
+            const inferenceDeviceSelect = document.getElementById('inference-device-select');
+            const maxCameras = document.getElementById('max-cameras');
             
-            // Update info display
-            document.getElementById('current-mode').textContent = 
-                `Mode: ${config.benchmark_mode ? 'Benchmark' : 'Camera'}`;
-            document.getElementById('inference-device').textContent = 
-                `Device: ${config.inference_device}`;
+            if (benchmarkMode) {
+                benchmarkMode.value = config.benchmark_mode.toString();
+            }
+            if (inferenceDeviceSelect) {
+                inferenceDeviceSelect.value = config.inference_device;
+            }
+            if (maxCameras && config.camera_config) {
+                maxCameras.value = config.camera_config.max_cameras;
+            }
+            
+            // Update info display with validation (correct IDs)
+            const infoMode = document.getElementById('info-mode');
+            const infoDevice = document.getElementById('info-device');
+            
+            if (infoMode) {
+                infoMode.textContent = config.benchmark_mode ? 'Benchmark' : 'Camera';
+            }
+            if (infoDevice) {
+                infoDevice.textContent = config.inference_device;
+            }
                 
             console.log('Configuration loaded:', config);
             
@@ -144,6 +168,12 @@ class YOLOWebInterface {
     }
 
     async saveConfiguration() {
+        // Check if processing is active
+        if (this.processing_active) {
+            this.addConsoleMessage('WARNING', 'Cannot save configuration while processing is active');
+            return;
+        }
+        
         try {
             const formData = new FormData(document.getElementById('config-form'));
             const config = {
@@ -192,14 +222,20 @@ class YOLOWebInterface {
             // Update button states
             const startBtn = document.getElementById('start-btn');
             const stopBtn = document.getElementById('stop-btn');
+            const saveConfigBtn = document.getElementById('save-config-btn');
+            
+            // Update internal processing state
+            this.processing_active = status.processing_active;
             
             if (status.processing_active) {
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
+                if (saveConfigBtn) saveConfigBtn.disabled = true;
                 this.updateConnectionStatus('processing');
             } else {
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
+                if (saveConfigBtn) saveConfigBtn.disabled = false;
                 if (this.connectionStatus !== 'disconnected') {
                     this.updateConnectionStatus('connected');
                 }
