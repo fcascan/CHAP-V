@@ -5,7 +5,7 @@ by fcascan 2025
 """
 import sys
 import logging
-from .dependency_manager import check_and_install_dependencies, check_rknn_availability, check_gpu_availability, ensure_root_permissions
+from .dependency_manager import check_and_install_dependencies, check_rknn_availability, check_gpu_availability, ensure_root_permissions, require_root_permissions
 
 
 def setup_system():
@@ -17,6 +17,21 @@ def setup_system():
     # Verify root permissions
     ensure_root_permissions()
     
+    return True
+
+
+def setup_web_system():
+    """Setup system for web interface with graceful permission handling."""
+    # Check root permissions first (non-exiting)
+    if not require_root_permissions():
+        return False
+    
+    # Check dependencies after permission verification
+    if not check_and_install_dependencies():
+        print("[ERROR] Failed to install required dependencies")
+        return False
+    
+    print("[INFO] System setup complete")
     return True
 
 

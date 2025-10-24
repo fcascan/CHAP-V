@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO RKNN Web Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>YOLO RKNN Web Interface</h1>
+            <div class="status-indicator">
+                <span class="status-text">Status:  </span>
+                <span id="processing-status" class="status-text">Disconnected</span>
+                <span id="connection-status" class="status-dot offline"></span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            
+            <!-- Top Row: Controls and System Info -->
+            <div class="top-row">
+                <!-- Control Panel -->
+                <div class="control-panel">
+                    <div class="control-section">
+                        <h3>🎛️ Controls</h3>
+                        <div class="control-buttons">
+                            <button id="start-btn" class="btn btn-primary" onclick="startProcessing()">
+                                ▶️ Start Processing
+                            </button>
+                            <button id="stop-btn" class="btn btn-secondary" onclick="stopProcessing()" disabled>
+                                ⏹️ Stop Processing
+                            </button>
+                            <button id="refresh-btn" class="btn btn-info" onclick="refreshStatus()">
+                                🔄 Refresh Status
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Information -->
+                <div class="info-section">
+                    <h3>📊 System Info</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Current Mode:</span>
+                            <span id="info-mode" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Inference Device:</span>
+                            <span id="info-device" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Processing Status:</span>
+                            <span id="info-processing" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Frame Available:</span>
+                            <span id="info-frame" class="info-value">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Row: Video and System Monitor/Configuration -->
+            <div class="content-row">
+                <!-- Video Display Section -->
+                <div class="video-section">
+                    <div class="video-container">
+                        <img id="video-stream" src="/video_feed" alt="Video Stream" class="video-display">
+                        <!-- <div class="video-overlay">
+                            <div id="video-info" class="video-info">
+                                <span id="current-mode">Mode: Loading...</span>
+                                <span id="inference-device">Device: Loading...</span>
+                            </div>
+                        </div> -->
+                    </div>
+                </div>
+
+                <!-- Right Panel: System Monitor and Configuration -->
+                <div class="right-panel">
+                    <!-- System Monitor -->
+                    <div class="monitor-section">
+                        <h3>🖥️ System Monitor</h3>
+                        
+                        <!-- CPU Monitor -->
+                        <div class="monitor-card">
+                            <h4>🔧 CPU</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Avg Load:</span>
+                                    <span id="cpu-load" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Max Freq:</span>
+                                    <span id="cpu-freq" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="cores-info">
+                                <div id="cpu-cores" class="cores-display"></div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="cpu-chart" class="monitor-chart"></canvas>
+                            </div>
+                            <div class="chart-legend" id="cpu-chart-legend"></div>
+                        </div>
+
+                        <!-- NPU Monitor -->
+                        <div class="monitor-card">
+                            <h4>⚡ NPU</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Avg Load:</span>
+                                    <span id="npu-load" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Freq:</span>
+                                    <span id="npu-freq" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="cores-info">
+                                <div id="npu-cores" class="cores-display"></div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="npu-chart" class="monitor-chart"></canvas>
+                            </div>
+                            <div class="chart-legend" id="npu-chart-legend"></div>
+                        </div>
+
+                        <!-- GPU Monitor -->
+                        <div class="monitor-card">
+                            <h4>🎮 GPU</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Load:</span>
+                                    <span id="gpu-load" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Freq:</span>
+                                    <span id="gpu-freq" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="gpu-chart" class="monitor-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Memory Monitor -->
+                        <div class="monitor-card">
+                            <h4>💾 Memory</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Used:</span>
+                                    <span id="memory-used" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Total:</span>
+                                    <span id="memory-total" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="memory-chart" class="monitor-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Temperature Monitor -->
+                        <div class="monitor-card">
+                            <h4>🌡️ Temperature</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Avg:</span>
+                                    <span id="temp-avg" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Max:</span>
+                                    <span id="temp-max" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="temp-chart" class="monitor-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>⚙️ Configuration</h3>
+                        <form id="config-form">
+                            <div class="form-group">
+                                <label for="benchmark-mode">Processing Mode:</label>
+                                <select id="benchmark-mode" name="benchmark_mode">
+                                    <option value="false">Camera Mode</option>
+                                    <option value="true">Benchmark Mode</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="inference-device-select">Inference Device:</label>
+                                <select id="inference-device-select" name="inference_device">
+                                    <option value="NPU">NPU</option>
+                                    <option value="GPU">GPU</option>
+                                    <option value="CPU">CPU</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="max-cameras">Max Cameras:</label>
+                                <input type="number" id="max-cameras" name="max_cameras" min="1" max="10" value="6">
+                            </div>
+                            
+                            <button type="submit" class="btn btn-success">💾 Save Configuration</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console Section -->
+        <div class="console-section">
+            <div class="console-header">
+                <h3>🖥️ Console Output</h3>
+                <div class="console-controls">
+                    <button id="clear-console" class="btn btn-small" onclick="clearConsole()">🗑️ Clear</button>
+                    <button id="toggle-autoscroll" class="btn btn-small active" onclick="toggleAutoScroll()">📜 Auto-scroll</button>
+                </div>
+            </div>
+            <div id="console-output" class="console-output"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2025 YOLO RKNN Web Interface by fcascan</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

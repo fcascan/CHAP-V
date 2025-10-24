@@ -112,3 +112,28 @@ def ensure_root_permissions():
             print(f"Please run: sudo python {sys.argv[0]}")
         sys.exit(1)
     print(f"Running with superuser permissions.")
+
+
+def check_root_permissions():
+    """Check if the script is running with root permissions without exiting."""
+    return os.geteuid() == 0
+
+
+def require_root_permissions():
+    """Require root permissions and provide clear error message if not available."""
+    if not check_root_permissions():
+        print("=" * 50)
+        print("[ERROR] Root permissions required")
+        print("=" * 50)
+        print("This application requires root access to:")
+        print("• Access NPU hardware acceleration")
+        print("• Configure system resources")
+        print("• Manage camera devices")
+        print("• Monitor system performance")
+        print()
+        print("[INFO] To start the web server, run:")
+        print(f"   sudo python3 {' '.join(sys.argv)}")
+        print()
+        return False
+    print("[INFO] Root permissions successfully verified")
+    return True

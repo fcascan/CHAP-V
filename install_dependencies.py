@@ -39,10 +39,10 @@ def download_file(url, filename):
             url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
         
         urllib.request.urlretrieve(url, filename)
-        logger.info(f"✓ Downloaded {filename}")
+        logger.info(f"Downloaded {filename}")
         return True
     except Exception as e:
-        logger.error(f"✗ Failed to download {filename}: {e}")
+        logger.error(f"Failed to download {filename}: {e}")
         return False
 
 def check_module(module_name, package_name=None):
@@ -52,10 +52,10 @@ def check_module(module_name, package_name=None):
     
     try:
         importlib.import_module(module_name)
-        logger.info(f"✓ {module_name} is already installed")
+        logger.info(f"{module_name} is already installed")
         return True
     except ImportError:
-        logger.warning(f"✗ {module_name} not found")
+        logger.warning(f"{module_name} not found")
         return False
 
 def install_pip_if_missing():
@@ -71,10 +71,10 @@ def install_pip_if_missing():
             subprocess.run(["sudo", "apt", "update"], check=True, capture_output=True)
             subprocess.run(["sudo", "apt", "install", "-y", "python3-pip"], 
                           check=True, capture_output=True)
-            logger.info("✓ pip installed successfully")
+            logger.info("pip installed successfully")
             return True
         except subprocess.CalledProcessError:
-            logger.error("✗ Failed to install pip")
+            logger.error("Failed to install pip")
             return False
 
 def install_package(package_name, use_sudo=False):
@@ -90,10 +90,10 @@ def install_package(package_name, use_sudo=False):
         
         logger.info(f"Installing {package_name}...")
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"✓ Successfully installed {package_name}")
+        logger.info(f"Successfully installed {package_name}")
         return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"✗ Failed to install {package_name}: {e}")
+        logger.error(f"Failed to install {package_name}: {e}")
         logger.error(f"Error output: {e.stderr}")
         
         # Try alternative installation methods
@@ -117,10 +117,10 @@ def install_package_alternative(package_name):
             logger.info(f"Installing {system_pkg} via apt...")
             subprocess.run(["sudo", "apt", "install", "-y", system_pkg], 
                           check=True, capture_output=True)
-            logger.info(f"✓ Successfully installed {system_pkg}")
+            logger.info(f"Successfully installed {system_pkg}")
             return True
         except subprocess.CalledProcessError:
-            logger.error(f"✗ Failed to install {system_pkg} via apt")
+            logger.error(f"Failed to install {system_pkg} via apt")
     
     return False
 
@@ -139,7 +139,7 @@ def install_rknn_wheel():
     
     # Check if we have a wheel for this Python version
     if python_version not in RKNN_WHEELS:
-        logger.error(f"✗ No RKNN wheel available for Python {python_version}")
+        logger.error(f"No RKNN wheel available for Python {python_version}")
         logger.error("Supported Python versions:")
         for version in sorted(RKNN_WHEELS.keys()):
             logger.error(f"  - Python {version}")
@@ -153,7 +153,7 @@ def install_rknn_wheel():
     # Check if already installed
     try:
         importlib.import_module("rknnlite")
-        logger.info("✓ rknnlite is already installed")
+        logger.info("rknnlite is already installed")
         return True
     except ImportError:
         pass
@@ -170,7 +170,7 @@ def install_rknn_wheel():
                     try:
                         cmd = [sys.executable, "-m", "pip", "install", os.path.join("installation", file)]
                         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                        logger.info("✓ Successfully installed RKNN toolkit from local wheel")
+                        logger.info("Successfully installed RKNN toolkit from local wheel")
                         return True
                     except subprocess.CalledProcessError as e:
                         logger.warning(f"Failed to install local wheel: {e}")
@@ -197,18 +197,18 @@ def install_rknn_wheel():
         cmd = [sys.executable, "-m", "pip", "install", wheel_path]
         logger.info("Installing RKNN toolkit from downloaded wheel...")
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info("✓ Successfully installed RKNN toolkit")
+        logger.info("Successfully installed RKNN toolkit")
         
         # Clean up downloaded file
         try:
             os.remove(wheel_path)
-            logger.info("✓ Cleaned up downloaded wheel file")
+            logger.info("Cleaned up downloaded wheel file")
         except:
             pass
         
         return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"✗ Failed to install RKNN toolkit: {e}")
+        logger.error(f"Failed to install RKNN toolkit: {e}")
         logger.error(f"Error output: {e.stderr}")
         
         # Try forcing installation ignoring platform checks as fallback
@@ -217,7 +217,7 @@ def install_rknn_wheel():
                    "--force-reinstall", "--no-deps", "--no-warn-script-location"]
             logger.info("Attempting forced installation...")
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            logger.info("✓ Successfully installed RKNN toolkit (forced)")
+            logger.info("Successfully installed RKNN toolkit (forced)")
             
             # Clean up downloaded file
             try:
@@ -227,7 +227,7 @@ def install_rknn_wheel():
             
             return True
         except subprocess.CalledProcessError as e2:
-            logger.error(f"✗ Forced installation also failed: {e2}")
+            logger.error(f"Forced installation also failed: {e2}")
             logger.info("This might be due to missing system dependencies.")
             logger.info("The program will continue in CPU mode.")
             return False
@@ -282,7 +282,7 @@ def check_and_install_dependencies():
     check_module("rknnlite")
     
     if all_installed:
-        logger.info("✓ All core dependencies are installed!")
+        logger.info("All core dependencies are installed!")
         return True
     else:
         logger.warning("Some dependencies are still missing, but continuing...")
@@ -298,11 +298,11 @@ def main():
     success = check_and_install_dependencies()
     
     if success:
-        print("\n✓ Dependency installation completed successfully!")
+        print("\nDependency installation completed successfully!")
         print("You can now run main.py")
         return 0
     else:
-        print("\n✗ Some dependencies could not be installed.")
+        print("\nSome dependencies could not be installed.")
         print("Please check the error messages above and install them manually.")
         return 1
 
