@@ -38,7 +38,6 @@ body {
     flex-direction: column;
 }
 
-/* Header */
 .header {
     background: white;
     padding: 20px 30px;
@@ -93,13 +92,11 @@ body {
     100% { opacity: 1; }
 }
 
-/* Main Content */
 .main-content {
     flex: 1;
     margin-bottom: 20px;
 }
 
-/* Top Row: Controls and System Info - Full width above everything */
 .top-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -108,21 +105,18 @@ body {
     width: 100%;
 }
 
-/* Content Row: Video and Right Panel */
 .content-row {
     display: grid;
     grid-template-columns: 1fr 400px;
     gap: 20px;
 }
 
-/* Right Panel: System Monitor and Configuration */
 .right-panel {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-/* Video Section */
 .video-section {
     background: white;
     border-radius: 10px;
@@ -163,7 +157,6 @@ body {
     gap: 4px;
 }
 
-/* Control Panel */
 .control-panel {
     display: flex;
     flex-direction: column;
@@ -188,7 +181,6 @@ body {
     font-weight: 600;
 }
 
-/* Buttons */
 .btn {
     padding: 10px 16px;
     border: none;
@@ -245,7 +237,6 @@ body {
     gap: 10px;
 }
 
-/* Form Elements */
 .form-group {
     margin-bottom: 15px;
 }
@@ -273,7 +264,6 @@ body {
     border-color: var(--secondary-color);
 }
 
-/* Info Grid */
 .info-grid {
     display: flex;
     flex-direction: column;
@@ -302,7 +292,6 @@ body {
     color: var(--text-primary);
 }
 
-/* Console Section */
 .console-section {
     background: white;
     border-radius: 10px;
@@ -397,7 +386,6 @@ body {
     word-wrap: break-word;
 }
 
-/* Footer */
 .footer {
     background: var(--primary-color);
     color: white;
@@ -407,7 +395,6 @@ body {
     margin-top: auto;
 }
 
-/* Responsive Design */
 @media (max-width: 1024px) {
     .top-row {
         grid-template-columns: 1fr;
@@ -456,7 +443,6 @@ body {
     }
 }
 
-/* Scrollbar Styling */
 .console-output::-webkit-scrollbar {
     width: 8px;
 }
@@ -474,7 +460,6 @@ body {
     background: #777;
 }
 
-/* Loading Animation */
 .loading {
     opacity: 0.6;
     pointer-events: none;
@@ -499,7 +484,6 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* System Monitor Styles */
 .monitor-section {
     background: white;
     padding: 20px;
@@ -590,7 +574,6 @@ body {
     color: var(--danger-color);
 }
 
-/* Chart Containers */
 .chart-container {
     width: 100%;
     height: 80px;
@@ -603,7 +586,6 @@ body {
     height: 80px !important;
 }
 
-/* Core information display */
 .cores-info {
     margin: 8px 0;
 }
@@ -700,13 +682,20 @@ body {
     margin-left: 2px;
 }
 
-/* Chart hover effects */
 .monitor-card:hover .chart-container {
     transform: scale(1.02);
     transition: transform 0.2s ease;
 }
 
-/* Responsive adjustments for monitor */
+.chart-container canvas {
+    padding-left: 5px;
+}
+
+.chart-container .chartjs-axis-y .chartjs-axis-y-label {
+    font-size: 9px !important;
+    color: rgba(128, 128, 128, 0.8) !important;
+}
+
 @media (max-width: 768px) {
     .monitor-grid {
         grid-template-columns: 1fr;

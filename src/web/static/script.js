@@ -8,8 +8,8 @@ class YOLOWebInterface {
         this.processing_active = false;
         this.charts = {};
         this.dataHistory = {
-            cpu_cores: [], // Array of arrays, one per core
-            npu_cores: [], // Array of arrays, one per NPU core  
+            cpu_cores: [],
+            npu_cores: [], 
             gpu: [],
             memory: [],
             temperature: []
@@ -18,18 +18,13 @@ class YOLOWebInterface {
             cpu: 8, // Orange Pi 5 Max has 8 cores
             npu: 3  // RK3588 NPU has 3 cores
         };
-        this.maxDataPoints = 30; // 1 minute at 2-second intervals
+        this.maxDataPoints = 60; // 1 minute interval
         this.init();
     }
 
     init() {
-        // Initialize Socket.IO connection
         this.initSocket();
-        
-        // Initialize UI elements
         this.initUI();
-        
-        // Load initial configuration and status
         this.loadConfig();
         this.refreshStatus();
         
@@ -44,7 +39,7 @@ class YOLOWebInterface {
             this.initCharts();
         }, 100);
         
-        console.log('YOLO Web Interface initialized');
+        console.log('Web Interface initialized');
     }
 
     initSocket() {
@@ -148,7 +143,6 @@ class YOLOWebInterface {
                 maxCameras.value = config.camera_config.max_cameras;
             }
             
-            // Update info display with validation (correct IDs)
             const infoMode = document.getElementById('info-mode');
             const infoDevice = document.getElementById('info-device');
             
@@ -168,7 +162,6 @@ class YOLOWebInterface {
     }
 
     async saveConfiguration() {
-        // Check if processing is active
         if (this.processing_active) {
             this.addConsoleMessage('WARNING', 'Cannot save configuration while processing is active');
             return;
@@ -392,7 +385,25 @@ class YOLOWebInterface {
                     y: {
                         min: 0,
                         max: 100,
-                        display: false
+                        display: true,
+                        position: 'left',
+                        grid: {
+                            display: true,
+                            color: 'rgba(128, 128, 128, 0.2)',
+                            lineWidth: 0.5
+                        },
+                        ticks: {
+                            stepSize: 10,
+                            callback: function(value, index, values) {
+                                return value % 10 === 0 ? value + '%' : '';
+                            },
+                            font: {
+                                size: 9
+                            },
+                            color: 'rgba(128, 128, 128, 0.8)',
+                            maxTicksLimit: 11,
+                            padding: 2
+                        }
                     }
                 },
                 plugins: {
@@ -412,7 +423,7 @@ class YOLOWebInterface {
             }
         };
 
-                // CPU Chart (multi-core)
+        // CPU Chart (multi-core)
         const cpuElement = document.getElementById('cpu-chart');
         if (cpuElement) {
             console.log('Initializing CPU chart with', this.coreCount.cpu, 'cores');
@@ -448,7 +459,25 @@ class YOLOWebInterface {
                         y: {
                             min: 0,
                             max: 100,
-                            display: false
+                            display: true,
+                            position: 'left',
+                            grid: {
+                                display: true,
+                                color: 'rgba(128, 128, 128, 0.2)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                stepSize: 10,
+                                callback: function(value, index, values) {
+                                    return value % 10 === 0 ? value + '%' : '';
+                                },
+                                font: {
+                                    size: 9
+                                },
+                                color: 'rgba(128, 128, 128, 0.8)',
+                                maxTicksLimit: 11,
+                                padding: 2
+                            }
                         }
                     },
                     plugins: {
@@ -470,7 +499,6 @@ class YOLOWebInterface {
             console.log('CPU chart initialized successfully with datasets:', cpuDatasets.length);
             console.log('CPU chart data structure:', this.charts.cpu.data.datasets.map(d => ({label: d.label, dataLength: d.data.length})));
             
-            // Initialize CPU legend
             this.initChartLegend('cpu', this.coreCount.cpu, cpuColors);
         } else {
             console.error('CPU chart element not found');
@@ -512,7 +540,25 @@ class YOLOWebInterface {
                         y: {
                             min: 0,
                             max: 100,
-                            display: false
+                            display: true,
+                            position: 'left',
+                            grid: {
+                                display: true,
+                                color: 'rgba(128, 128, 128, 0.2)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                stepSize: 10,
+                                callback: function(value, index, values) {
+                                    return value % 10 === 0 ? value + '%' : '';
+                                },
+                                font: {
+                                    size: 9
+                                },
+                                color: 'rgba(128, 128, 128, 0.8)',
+                                maxTicksLimit: 11,
+                                padding: 2
+                            }
                         }
                     },
                     plugins: {
@@ -534,7 +580,6 @@ class YOLOWebInterface {
             console.log('NPU chart initialized successfully with datasets:', npuDatasets.length);
             console.log('NPU chart data structure:', this.charts.npu.data.datasets.map(d => ({label: d.label, dataLength: d.data.length})));
             
-            // Initialize NPU legend
             this.initChartLegend('npu', this.coreCount.npu, npuColors);
         } else {
             console.error('NPU chart element not found');
@@ -589,7 +634,25 @@ class YOLOWebInterface {
                     y: {
                         min: 20,
                         max: 90,
-                        display: false
+                        display: true,
+                        position: 'left',
+                        grid: {
+                            display: true,
+                            color: 'rgba(128, 128, 128, 0.2)',
+                            lineWidth: 0.5
+                        },
+                        ticks: {
+                            stepSize: 10,
+                            callback: function(value, index, values) {
+                                return value % 10 === 0 ? value + '°C' : '';
+                            },
+                            font: {
+                                size: 9
+                            },
+                            color: 'rgba(128, 128, 128, 0.8)',
+                            maxTicksLimit: 8,
+                            padding: 2
+                        }
                     }
                 }
             }
@@ -709,8 +772,8 @@ class YOLOWebInterface {
             }
             
             this.charts[chartName].data.datasets[0].borderColor = color;
-            this.charts[chartName].data.datasets[0].backgroundColor = color + '20'; // with alpha
-            this.charts[chartName].update('none'); // no animation for smoother updates
+            this.charts[chartName].data.datasets[0].backgroundColor = color + '20';
+            this.charts[chartName].update('none');
         }
     }
     
