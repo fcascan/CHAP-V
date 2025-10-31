@@ -56,6 +56,9 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
         
     logger.info(f"Cameras detected: {len(cameras)}")
     
+    # Configure video manager for multiple cameras
+    video_manager.set_camera_count(len(cameras))
+    
     # Create output directory
     OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "images")
     if not os.path.exists(OUTPUT_DIR):
@@ -214,9 +217,8 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
                 output_path = os.path.join(OUTPUT_DIR, f"inference_output_cam{idx}.jpg")
                 cv2.imwrite(output_path, imgs_to_draw[idx])
                 
-                # Update web video stream (only first camera for now)
-                if idx == 0:
-                    video_manager.update_frame(imgs_to_draw[idx])
+                # Update web video stream for each camera
+                video_manager.update_frame(imgs_to_draw[idx], camera_id=idx)
             
             camera_total_frames[idx] += 1
             

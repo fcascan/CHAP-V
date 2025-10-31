@@ -59,10 +59,18 @@ class ConsoleCapture:
         """Add a message to the queue"""
         timestamp = time.strftime('%H:%M:%S')
         
+        # Strip redundant log level prefixes for web display
+        clean_message = message
+        log_prefixes = ['[INFO]', '[WARNING]', '[ERROR]', '[DEBUG]']
+        for prefix in log_prefixes:
+            if clean_message.startswith(prefix):
+                clean_message = clean_message[len(prefix):].strip()
+                break
+        
         msg_data = {
             'timestamp': timestamp,
             'level': level,
-            'message': message
+            'message': clean_message
         }
         
         try:
@@ -133,21 +141,17 @@ class WebLogger:
     def info(self, message):
         """Log an info message"""
         print(f"[INFO] {message}")
-        self.console_capture.add_log_message('INFO', f"[INFO] {message}")
 
     def warning(self, message):
         """Log a warning message"""
         print(f"[WARNING] {message}")
-        self.console_capture.add_log_message('WARNING', f"[WARNING] {message}")
 
     def error(self, message):
         """Log an error message"""
         print(f"[ERROR] {message}")
-        self.console_capture.add_log_message('ERROR', f"[ERROR] {message}")
 
     def debug(self, message):
         """Log a debug message"""
-        # Only show debug in console, not in web
         pass
 
 # Global console capture instance

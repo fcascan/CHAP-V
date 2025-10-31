@@ -19,6 +19,8 @@ class YOLOWebInterface {
             npu: 3  // RK3588 NPU has 3 cores
         };
         this.maxDataPoints = 60; // 1 minute interval
+        this.currentCameraCount = 1;
+        this.cameraCheckInterval = null;
         this.init();
     }
 
@@ -34,10 +36,14 @@ class YOLOWebInterface {
         // Set up periodic system monitoring updates
         setInterval(() => this.updateSystemMonitor(), 500);
         
-        // Initialize monitoring charts with delay to ensure DOM is ready
-        setTimeout(() => {
-            this.initCharts();
-        }, 100);
+        // Set up periodic camera check
+        this.startCameraCheck();
+        
+        // Initialize charts
+        this.initCharts();
+        
+        // Initialize console resizer
+        this.initConsoleResizer();
         
         console.log('Web Interface initialized');
     }
@@ -364,10 +370,144 @@ class YOLOWebInterface {
         }
     }
 
+    initConsoleResizer() {
+        const resizeHandle = document.getElementById('console-resize-handle');
+        const consoleSection = document.getElementById('console-section');
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+
+        // Get initial height or set default
+        const savedHeight = localStorage.getItem('consoleHeight');
+        if (savedHeight) {
+            consoleSection.style.setProperty('--console-height', savedHeight + 'px');
+        }
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = consoleSection.offsetHeight;
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+
+            // Reversed delta calculation since handle is now at bottom
+            const deltaY = e.clientY - startY;
+            const newHeight = Math.max(100, Math.min(window.innerHeight * 1.2, startHeight + deltaY));
+            
+            consoleSection.style.setProperty('--console-height', newHeight + 'px');
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                // Save the height to localStorage
+                const currentHeight = consoleSection.offsetHeight;
+                localStorage.setItem('consoleHeight', currentHeight);
+            }
+        });
+
+        // Handle double-click to reset to default height
+        resizeHandle.addEventListener('dblclick', () => {
+            consoleSection.style.setProperty('--console-height', '300px');
+            localStorage.setItem('consoleHeight', '300');
+        });
+    }
+
     // Request console updates from server
     requestConsoleUpdate() {
         if (this.socket && this.socket.connected) {
             this.socket.emit('request_console_update');
+        }
+    }
+    
+    startCameraCheck() {
+        // Check camera count every 2 seconds when processing is active
+        this.cameraCheckInterval = setInterval(() => {
+            if (this.processing_active) {
+                this.checkCameras();
+            }
+        }, 2000);
+    }
+    
+    async checkCameras() {
+        try {
+            const response = await fetch('/api/cameras');
+            const data = await response.json();
+            
+            if (data.camera_count !== this.currentCameraCount) {
+                this.currentCameraCount = data.camera_count;
+                this.updateCameraView(data.camera_count);
+            }
+        } catch (error) {
+            console.error('Error checking cameras:', error);
+        }
+    }
+    
+    updateCameraView(cameraCount) {
+        const singleView = document.getElementById('single-camera-view');
+        const multiView = document.getElementById('multi-camera-view');
+        
+        if (cameraCount <= 1) {
+            // Show single camera view
+            singleView.style.display = 'block';
+            multiView.style.display = 'none';
+        } else {
+            // Show multiple camera view
+            singleView.style.display = 'none';
+            multiView.style.display = 'block';
+            this.createMultiCameraLayout(cameraCount);
+        }
+    }
+    
+    createMultiCameraLayout(cameraCount) {
+        const multiView = document.getElementById('multi-camera-view');
+        
+        // Clear existing cameras
+        multiView.innerHTML = '';
+        
+        // Set appropriate CSS class based on camera count
+        multiView.className = 'multi-camera-container';
+        if (cameraCount === 2) {
+            multiView.classList.add('two-cameras');
+        } else if (cameraCount === 3) {
+            multiView.classList.add('three-cameras');
+        } else if (cameraCount === 4) {
+            multiView.classList.add('four-cameras');
+        } else {
+            multiView.classList.add('many-cameras');
+        }
+        
+        // Create camera containers
+        for (let i = 0; i < cameraCount; i++) {
+            const cameraDiv = document.createElement('div');
+            cameraDiv.className = 'camera-container';
+            
+            const cameraImg = document.createElement('img');
+            cameraImg.src = `/video_feed/${i}`;
+            cameraImg.alt = `Camera ${i} Stream`;
+            cameraImg.className = 'video-display';
+            
+            const cameraLabel = document.createElement('div');
+            cameraLabel.className = 'camera-label';
+            cameraLabel.textContent = `Camera ${i}`;
+            
+            cameraDiv.appendChild(cameraImg);
+            cameraDiv.appendChild(cameraLabel);
+            multiView.appendChild(cameraDiv);
+            
+            // Add error handling for each camera
+            cameraImg.addEventListener('error', () => {
+                console.log(`Camera ${i} stream error`);
+                cameraImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjY2NjIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DYW1lcmEgVW5hdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+            });
         }
     }
     
@@ -949,6 +1089,55 @@ function clearConsole() {
 
 function toggleAutoScroll() {
     window.yoloInterface.toggleAutoScroll();
+}
+
+// Toggle collapsible sections
+function toggleSection(contentId, button) {
+    const content = document.getElementById(contentId);
+    const isCollapsed = content.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        // Expand
+        content.classList.remove('collapsed');
+        button.classList.remove('collapsed');
+        localStorage.setItem(contentId + '_collapsed', 'false');
+    } else {
+        // Collapse
+        content.classList.add('collapsed');
+        button.classList.add('collapsed');
+        localStorage.setItem(contentId + '_collapsed', 'true');
+    }
+}
+
+// Initialize section states on page load
+function initializeSectionStates() {
+    const sections = ['monitor-content', 'config-content'];
+    
+    sections.forEach(sectionId => {
+        const isCollapsed = localStorage.getItem(sectionId + '_collapsed') === 'true';
+        const content = document.getElementById(sectionId);
+        const button = document.querySelector(`[onclick*="${sectionId}"]`);
+        
+        if (isCollapsed && content && button) {
+            content.classList.add('collapsed');
+            button.classList.add('collapsed');
+        }
+    });
+}
+
+// Initialize when DOM is loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeSectionStates);
+} else {
+    initializeSectionStates();
+}
+
+function downloadLatestCSV() {
+    window.location.href = '/api/download/latest_csv';
+}
+
+function downloadLatestGraphs() {
+    window.location.href = '/api/download/latest_graphs';
 }
 
 // Initialize the interface when the page loads

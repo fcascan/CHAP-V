@@ -10,6 +10,8 @@ import time
 import numpy as np
 import threading
 import psutil
+import csv
+from datetime import datetime
 from ..core import config
 from .video_integration import get_video_stream_manager
 from .console_integration import get_web_logger
@@ -120,32 +122,77 @@ def process_video_web(yolo_postprocess_func, web_server=None):
     # Start video stream manager
     video_manager.start()
     
+    # Create CSV file for performance metrics in src/processing/results directory
+    results_dir = os.path.join(os.getcwd(), "src", "processing", "results")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_filename = f"performance_metrics_{current_device}_{timestamp_str}.csv"
+    csv_filepath = os.path.join(results_dir, csv_filename)
+    
+    # CSV headers
+    csv_headers = [
+        'timestamp', 'frame_number', 'inference_time_ms', 'total_frame_time_ms',
+        'cpu_usage_percent', 'npu_core0_percent', 'npu_core1_percent', 'npu_core2_percent',
+        'gpu_usage_percent', 'fps_actual', 'detections_count'
+    ]
+    
+    csv_file = open(csv_filepath, 'w', newline='', encoding='utf-8')
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(csv_headers)
+    
+    # CSV line limitation
+    max_csv_lines = 5000
+    csv_lines_written = 0
+    csv_data_buffer = []  # Buffer to store recent CSV rows
+    
+    logger.info(f"Performance metrics will be saved to: src/processing/results/{csv_filename}")
+    
     inference_times = []
     processing_times = []
     processed_frames = 0
     cpu_usage_samples = []
-    npu_usage_samples = []
+    npu_usage_samples = []  # Will store per-core usage samples as tuples (core0, core1, core2)
     monitoring_active = True
     
+    # Variables for CSV logging
+    current_cpu_usage = 0
+    current_npu_usage = [0, 0, 0]
+    current_gpu_usage = 0
+    
     def monitor_usage():
+        nonlocal current_cpu_usage, current_npu_usage, current_gpu_usage
         while monitoring_active:
             cpu_percent = psutil.cpu_percent(interval=0.1)
             cpu_usage_samples.append(cpu_percent)
+            current_cpu_usage = cpu_percent
+            
             if current_device == "NPU":
                 try:
-                    npu_usage = 0
-                    try:
-                        with open('/sys/kernel/debug/rknpu/load', 'r') as f:
-                            content = f.read().strip()
-                            for line in content.split('\n'):
-                                if 'NPU load:' in line:
-                                    npu_usage = float(line.split(':')[1].strip().rstrip('%'))
-                                    break
-                    except (FileNotFoundError, PermissionError, ValueError):
-                        npu_usage = min(100.0, len(inference_times) * 10 if inference_times else 0)
-                    npu_usage_samples.append(npu_usage)
+                    # Import the function from my_htop to get consistent NPU readings
+                    from ..utils.my_htop import get_npu_info
+                    npu_load, _ = get_npu_info()
+                    if npu_load and len(npu_load) >= 3:
+                        # Store per-core usage [core0, core1, core2]
+                        npu_usage_samples.append(tuple(npu_load))
+                        current_npu_usage = npu_load[:3]
+                    else:
+                        npu_usage_samples.append((0, 0, 0))
+                        current_npu_usage = [0, 0, 0]
                 except Exception:
-                    npu_usage_samples.append(0)
+                    npu_usage_samples.append((0, 0, 0))
+                    current_npu_usage = [0, 0, 0]
+            elif current_device == "GPU":
+                try:
+                    from ..utils.my_htop import get_gpu_info
+                    gpu_load, _ = get_gpu_info()
+                    if gpu_load is not None:
+                        current_gpu_usage = gpu_load
+                    else:
+                        current_gpu_usage = 0
+                except Exception:
+                    current_gpu_usage = 0
+            
             time.sleep(0.1)
             
     monitor_thread = threading.Thread(target=monitor_usage, daemon=True)
@@ -194,9 +241,11 @@ def process_video_web(yolo_postprocess_func, web_server=None):
             current_label_text_size = display_config['label_text_size']
             current_fps_text_size = display_config['fps_text_size']
         
-        # Create display frame
+        # Create display frame and count detections
+        detections_count = 0
         frame_display = frame.copy()
         if boxes is not None and classes is not None and scores is not None:
+            detections_count = len(boxes)
             for b, label, s in [(box, current_classes[c], score) for box, c, score in zip(boxes, classes, scores) if c < len(current_classes)]:
                 x1, y1, x2, y2 = map(int, b)
                 red = int(255 * s)
@@ -218,6 +267,53 @@ def process_video_web(yolo_postprocess_func, web_server=None):
             fps_actual = (len(frame_times) - 1) / (frame_times[-1] - frame_times[0])
         else:
             fps_actual = 0.0
+        
+        # Write metrics to CSV
+        try:
+            csv_row = [
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],  # timestamp with milliseconds
+                processed_frames + 1,  # frame_number
+                round(inf_time * 1000, 2),  # inference_time_ms
+                round(total_frame_time * 1000, 2),  # total_frame_time_ms
+                round(current_cpu_usage, 1),  # cpu_usage_percent
+                current_npu_usage[0] if len(current_npu_usage) > 0 else 0,  # npu_core0_percent
+                current_npu_usage[1] if len(current_npu_usage) > 1 else 0,  # npu_core1_percent
+                current_npu_usage[2] if len(current_npu_usage) > 2 else 0,  # npu_core2_percent
+                current_gpu_usage,  # gpu_usage_percent
+                round(fps_actual, 2),  # fps_actual
+                detections_count  # detections_count
+            ]
+            
+            # Add to buffer
+            csv_data_buffer.append(csv_row)
+            
+            # Keep only last max_csv_lines
+            if len(csv_data_buffer) > max_csv_lines:
+                csv_data_buffer.pop(0)
+            
+            # Write to CSV (rewrite file if we hit the limit to keep only recent data)
+            csv_lines_written += 1
+            if csv_lines_written > max_csv_lines:
+                # Rewrite the entire file with only recent data
+                csv_file.close()
+                csv_file = open(csv_filepath, 'w', newline='', encoding='utf-8')
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(csv_headers)
+                
+                # Write all buffered data
+                for buffered_row in csv_data_buffer:
+                    csv_writer.writerow(buffered_row)
+                
+                csv_lines_written = len(csv_data_buffer)
+            else:
+                # Normal write
+                csv_writer.writerow(csv_row)
+            
+            # Flush CSV file every 50 frames to ensure data is saved
+            if processed_frames % 50 == 0:
+                csv_file.flush()
+        except Exception as e:
+            logger.warning(f"Failed to write CSV row: {e}")
             
         # Add overlay information
         cv2.putText(frame_display, f"Frame: {processed_frames + 1}/{total_frames}", (10, 30),
@@ -251,6 +347,14 @@ def process_video_web(yolo_postprocess_func, web_server=None):
     # Stop video stream manager
     video_manager.stop()
     
+    # Close CSV file
+    try:
+        csv_file.close()
+        logger.info(f"Performance metrics saved to: src/processing/results/{csv_filename}")
+        logger.info(f"CSV file contains {processed_frames} rows of performance data")
+    except Exception as e:
+        logger.error(f"Error closing CSV file: {e}")
+    
     cap.release()
     
     # Print statistics
@@ -261,31 +365,13 @@ def process_video_web(yolo_postprocess_func, web_server=None):
         inference_fps = 1.0 / np.mean(inference_times)
         
         logger.info("Analysis Complete")
-        logger.info(f"Analysis stats: {processed_frames} frames in {total_time:.1f}s using {current_device}")
-        logger.info(f"Average inference time: {avg_inference_time:.2f} ms")
-        logger.info(f"Average total frame processing time: {avg_processing_time:.2f} ms")
+        logger.info(f"Basic stats: {processed_frames} frames in {total_time:.1f}s using {current_device}")
         logger.info(f"Processing FPS: {processing_fps:.2f}")
-        logger.info(f"Inference FPS: {inference_fps:.2f}")
-        logger.info(f"Min inference time: {min(inference_times)*1000:.2f} ms")
-        logger.info(f"Max inference time: {max(inference_times)*1000:.2f} ms")
+        logger.info(f"Average inference time: {avg_inference_time:.2f} ms")
         
-        logger.info("PROCESSOR USAGE STATISTICS")
-        logger.info("-" * 30)
-        from ..utils.my_htop import get_processor_usage_stats
-        proc_stats = get_processor_usage_stats(current_device)
-        if proc_stats['cpu']:
-            logger.info(f"CPU Usage - Avg: {proc_stats['cpu']['avg']:.1f}%")
-        else:
-            logger.info("CPU Usage - N/A")
-        if proc_stats['npu']:
-            logger.info(f"NPU Usage - Avg: {proc_stats['npu']['avg']:.1f}% (per core: {proc_stats['npu']['per_core']})")
-        else:
-            logger.info("NPU Usage - N/A")
-        if proc_stats['gpu']:
-            samples_info = f" ({proc_stats['gpu']['samples']} samples)" if 'samples' in proc_stats['gpu'] else ""
-            logger.info(f"GPU Usage - Avg: {proc_stats['gpu']['avg']:.1f}%{samples_info}")
-        else:
-            logger.info("GPU Usage - N/A")
+        # Use automatic CSV analysis instead of manual statistics
         logger.info("="*50)
+        from ..utils.my_htop import auto_analyze_latest_csv
+        auto_analyze_latest_csv(current_device, logger, csv_filepath)
     else:
         logger.error("No frames were processed successfully.")

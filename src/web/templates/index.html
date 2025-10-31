@@ -30,14 +30,20 @@
                     <div class="control-section">
                         <h3>🎛️ Controls</h3>
                         <div class="control-buttons">
-                            <button id="start-btn" class="btn btn-primary" onclick="startProcessing()">
-                                ▶️ Start Processing
+                            <button id="start-btn" class="btn btn-warning" onclick="startProcessing()">
+                                Start Processing
                             </button>
-                            <button id="stop-btn" class="btn btn-secondary" onclick="stopProcessing()" disabled>
-                                ⏹️ Stop Processing
+                            <button id="stop-btn" class="btn btn-warning" onclick="stopProcessing()" disabled>
+                                Stop Processing
                             </button>
-                            <button id="refresh-btn" class="btn btn-info" onclick="refreshStatus()">
-                                🔄 Refresh Status
+                            <button id="refresh-btn" class="btn btn-warning" onclick="refreshStatus()">
+                                Refresh Status
+                            </button>
+                            <button id="download-csv-btn" class="btn btn-warning" onclick="downloadLatestCSV()">
+                                Download Latest CSV
+                            </button>
+                            <button id="download-graphs-btn" class="btn btn-warning" onclick="downloadLatestGraphs()">
+                                Download Latest Graphs
                             </button>
                         </div>
                     </div>
@@ -71,14 +77,15 @@
             <div class="content-row">
                 <!-- Video Display Section -->
                 <div class="video-section">
-                    <div class="video-container">
-                        <img id="video-stream" src="/video_feed" alt="Video Stream" class="video-display">
-                        <!-- <div class="video-overlay">
-                            <div id="video-info" class="video-info">
-                                <span id="current-mode">Mode: Loading...</span>
-                                <span id="inference-device">Device: Loading...</span>
-                            </div>
-                        </div> -->
+                    <div id="video-container-wrapper">
+                        <!-- Single camera view (default) -->
+                        <div id="single-camera-view" class="video-container">
+                            <img id="video-stream" src="/video_feed" alt="Video Stream" class="video-display">
+                        </div>
+                        <!-- Multiple cameras view (hidden by default) -->
+                        <div id="multi-camera-view" class="multi-camera-container" style="display: none;">
+                            <!-- Dynamic camera containers will be added here by JavaScript -->
+                        </div>
                     </div>
                 </div>
 
@@ -86,7 +93,13 @@
                 <div class="right-panel">
                     <!-- System Monitor -->
                     <div class="monitor-section">
-                        <h3>🖥️ System Monitor</h3>
+                        <div class="section-header">
+                            <h3>🖥️ System Monitor</h3>
+                            <button class="collapse-btn" onclick="toggleSection('monitor-content', this)">
+                                <span class="arrow-icon">▼</span>
+                            </button>
+                        </div>
+                        <div id="monitor-content" class="collapsible-content">
                         
                         <!-- CPU Monitor -->
                         <div class="monitor-card">
@@ -185,10 +198,17 @@
                                 <canvas id="temp-chart" class="monitor-chart"></canvas>
                             </div>
                         </div>
+                        </div>
                     </div>
 
                     <div class="config-section">
-                        <h3>⚙️ Configuration</h3>
+                        <div class="section-header">
+                            <h3>⚙️ Configuration</h3>
+                            <button class="collapse-btn" onclick="toggleSection('config-content', this)">
+                                <span class="arrow-icon">▼</span>
+                            </button>
+                        </div>
+                        <div id="config-content" class="collapsible-content">
                         <form id="config-form">
                             <div class="form-group">
                                 <label for="benchmark-mode">Processing Mode:</label>
@@ -212,23 +232,29 @@
                                 <input type="number" id="max-cameras" name="max_cameras" min="1" max="10" value="6">
                             </div>
                             
-                            <button id="save-config-btn" type="submit" class="btn btn-success">💾 Save Configuration</button>
+                            <button id="save-config-btn" type="submit" class="btn btn-warning">Save Configuration</button>
                         </form>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Console Section -->
-        <div class="console-section">
+        <div class="console-section" id="console-section">
             <div class="console-header">
                 <h3>🖥️ Console Output</h3>
                 <div class="console-controls">
-                    <button id="clear-console" class="btn btn-small" onclick="clearConsole()">🗑️ Clear</button>
-                    <button id="toggle-autoscroll" class="btn btn-small active" onclick="toggleAutoScroll()">📜 Auto-scroll</button>
+                    <button id="clear-console" class="btn btn-small" onclick="clearConsole()">Clear</button>
+                    <button id="toggle-autoscroll" class="btn btn-small active" onclick="toggleAutoScroll()">Auto-scroll</button>
                 </div>
             </div>
             <div id="console-output" class="console-output"></div>
+        </div>
+
+        <!-- Console Resize Handle -->
+        <div class="console-resize-handle" id="console-resize-handle">
+            <div class="resize-handle-line"></div>
         </div>
     </div>
 

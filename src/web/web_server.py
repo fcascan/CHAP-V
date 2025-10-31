@@ -59,10 +59,10 @@ class WebServer:
         
 
             
-    def generate_video_stream(self):
+    def generate_video_stream(self, camera_id=None):
         """Generate video stream for web interface"""
         while True:
-            frame = self.video_manager.get_latest_frame()
+            frame = self.video_manager.get_latest_frame(camera_id)
             if frame is not None:
                 # Encode frame to JPEG
                 ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -105,7 +105,7 @@ class WebServer:
             
         @self.app.route('/video_feed')
         def video_feed():
-            """Video streaming route"""
+            """Video streaming route (main camera)"""
             try:
                 return Response(self.generate_video_stream(),
                               mimetype='multipart/x-mixed-replace; boundary=frame',
@@ -114,6 +114,18 @@ class WebServer:
                                      'Expires': '0'})
             except Exception as e:
                 return "Video feed error", 500
+                
+        @self.app.route('/video_feed/<int:camera_id>')
+        def video_feed_camera(camera_id):
+            """Video streaming route for specific camera"""
+            try:
+                return Response(self.generate_video_stream(camera_id),
+                              mimetype='multipart/x-mixed-replace; boundary=frame',
+                              headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                     'Pragma': 'no-cache',
+                                     'Expires': '0'})
+            except Exception as e:
+                return f"Video feed error for camera {camera_id}", 500
                           
         @self.app.route('/api/config', methods=['GET'])
         def get_config():
@@ -225,10 +237,72 @@ class WebServer:
             
         @self.app.route('/api/system_monitor')
         def get_system_monitor():
-            """Get real-time system monitoring data"""
+            """Get system monitoring data"""
             try:
                 monitor_data = self._get_system_monitoring_data()
                 return jsonify(monitor_data)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+                
+        @self.app.route('/api/cameras')
+        def get_cameras():
+            """Get information about available cameras"""
+            try:
+                camera_count = self.video_manager.get_camera_count()
+                return jsonify({
+                    'camera_count': camera_count,
+                    'cameras': [{'id': i, 'name': f'Camera {i}'} for i in range(camera_count)]
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+                
+        @self.app.route('/api/download/latest_csv')
+        def download_latest_csv():
+            """Download the latest CSV performance file"""
+            import glob
+            from flask import send_file
+            
+            try:
+                # Search for latest CSV files
+                csv_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', 'performance_metrics_*.csv')
+                csv_files = glob.glob(csv_pattern)
+                
+                if not csv_files:
+                    return jsonify({'error': 'No CSV files found'}), 404
+                
+                # Get the most recent file
+                latest_csv = max(csv_files, key=os.path.getmtime)
+                
+                return send_file(latest_csv, 
+                               as_attachment=True,
+                               download_name=os.path.basename(latest_csv),
+                               mimetype='text/csv')
+                               
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+                
+        @self.app.route('/api/download/latest_graphs')
+        def download_latest_graphs():
+            """Download the latest PNG graphs file"""
+            import glob
+            from flask import send_file
+            
+            try:
+                # Search for latest PNG files
+                png_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', 'performance_metrics_*_graphs.png')
+                png_files = glob.glob(png_pattern)
+                
+                if not png_files:
+                    return jsonify({'error': 'No graph files found'}), 404
+                
+                # Get the most recent file
+                latest_png = max(png_files, key=os.path.getmtime)
+                
+                return send_file(latest_png,
+                               as_attachment=True, 
+                               download_name=os.path.basename(latest_png),
+                               mimetype='image/png')
+                               
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
             
