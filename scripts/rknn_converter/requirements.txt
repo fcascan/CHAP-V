@@ -1,0 +1,23 @@
+# Requirements for RKNN Model Converter
+
+## Required Python Dependencies:
+
+```bash
+pip install torch torchvision
+pip install ultralytics
+pip install onnx
+pip install numpy
+pip install opencv-python
+pip install Pillow
+```
+
+## RKNN-specific Dependencies:
+
+- RKNN Toolkit 2 (specific to target platform): https://github.com/airockchip/rknn-toolkit2/tree/master/rknn-toolkit2/packages
+```bash
+pip install './rknn_toolkit2-2.3.2-cp3xx-cp3xx-xxxxxx.whl'
+```
+- CMake installed is required for building RKNN Toolkit components:
+```bash
+sudo apt install -y cmake build-essential
+```

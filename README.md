@@ -5,12 +5,12 @@ A project for comparison between CPU, GPU & NPU inference with **Web Interface**
 
 ## Features
 
-- **🎯 Web Interface**: Modern web UI with real-time video streaming and console output
-- **📱 Multi-camera support**: Up to 3 USB cameras with NPU core assignment
-- **🔧 Auto-installation**: Intelligent dependency detection and installation
-- **🚀 NPU acceleration**: RKNN toolkit with CPU fallback
-- **📊 Real-time inference**: Live object detection with statistics
-- **⚙️ Web Configuration**: Change settings and control processing via web interface
+- **Web Interface**: Modern web UI with real-time video streaming and console output
+- **Multi-camera support**: Up to 3 USB cameras with NPU core assignment
+- **Auto-installation**: Intelligent dependency detection and installation
+- **NPU acceleration**: RKNN toolkit with CPU fallback
+- **Real-time inference**: Live object detection with statistics
+- **Web Configuration**: Change settings and control processing via web interface
 
 ## Requirements
 
@@ -30,7 +30,7 @@ cd PythonYoloRKNPU
 sudo python3 main.py
 ```
 
-### Web Interface Mode (NEW!)
+### Web Interface Mode
 ```bash
 # Install web dependencies
 sudo pip3 install Flask Flask-SocketIO eventlet
@@ -46,12 +46,12 @@ Then open your browser to: **http://your-device-ip:8080**
 
 ## Web Interface Features
 
-- **📺 Real-time Video Streaming**: See live detection results in your browser
-- **🖥️ Console Output**: All terminal messages displayed in web interface
-- **⚙️ Configuration Panel**: Change inference device, mode, and camera settings
-- **🎛️ Control Buttons**: Start/stop processing remotely
-- **📊 System Information**: Real-time status and performance metrics
-- **📱 Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Real-time Video Streaming**: See live detection results in your browser
+- **Console Output**: All terminal messages displayed in web interface
+- **Configuration Panel**: Change inference device, mode, and camera settings
+- **Control Buttons**: Start/stop processing remotely
+- **System Information**: Real-time status and performance metrics
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
 
 ## Configuration
 
@@ -99,29 +99,28 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 
 ### Web Interface Sections
 
-- **📺 Video Display**: Real-time video with detection overlays and performance metrics
-- **🎛️ Control Panel**: Start/stop processing and refresh system status
-- **⚙️ Configuration**: Change processing mode, inference device, and camera settings
-- **📊 System Info**: Current status, processing mode, and frame availability
-- **🖥️ Console Output**: Real-time logging with color-coded message levels
+- **Video Display**: Real-time video with detection overlays and performance metrics
+- **Control Panel**: Start/stop processing and refresh system status
+- **Configuration**: Change processing mode, inference device, and camera settings
+- **System Info**: Current status, processing mode, and frame availability
+- **Console Output**: Real-time logging with color-coded message levels
 
 ## Troubleshooting
 
 - **No cameras**: Check `ls /dev/video*`
-- **Permission denied**: Use `sudo`
-- **RKNN fails**: Program auto-switches to CPU mode
+- **Permission denied**: Use `sudo` to run this program
 - **Web interface not accessible**: Check firewall settings and use correct IP
 - **Video stream not loading**: Ensure processing is started and frames are available
 
 ## Model Compatibility
-Ensure the RKNN model is compatible with your NPU and matches the input size (640, 640).
+Ensure the RKNN model is compatible with your Rockchip device and matches the input size (640, 640).
 
 ## License
 This project is licensed under the MIT License.
 
 ## Acknowledgments
-- RKNN Toolkit Lite (https://github.com/rockchip-linux/rknn-toolkit)
-- YOLO Model (https://github.com/ultralytics/yolov5)
+- RKNN Toolkit (https://github.com/rockchip-linux/rknn-toolkit)
+- YOLO Vision (https://github.com/ultralytics/ultralytics)
 - OpenCV (https://opencv.org/)
 - rknputop (https://github.com/ramonbroox/rknputop)
 - myrktop (https://github.com/mhl221135/myrktop)
