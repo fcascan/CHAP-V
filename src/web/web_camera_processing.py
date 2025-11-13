@@ -74,6 +74,11 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
             rknn.init_runtime(core_mask=core)
             rknn_instances.append(rknn)
             # Model loaded on NPU core
+            
+        # Update web server with active model info (using first instance)
+        if web_server and rknn_instances:
+            web_server.active_model_name = os.path.basename(MODEL_PATH)
+            web_server.rknn_instance = rknn_instances[0]
     else:
         net = cv2.dnn.readNetFromONNX(ONNX_MODEL_PATH)
         gpu_backend_enabled = False
@@ -108,6 +113,11 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
             logger.info("Threat detection model loaded (CPU)")
+            
+        # Update web server with active model info
+        if web_server:
+            web_server.active_model_name = os.path.basename(ONNX_MODEL_PATH)
+            web_server.rknn_instance = None
     
     # Start GPU monitoring if using GPU inference
     gpu_monitor_thread = None

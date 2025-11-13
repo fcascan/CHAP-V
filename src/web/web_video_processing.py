@@ -71,6 +71,11 @@ def process_video_web(yolo_postprocess_func, web_server=None):
         rknn.load_rknn(current_model_path)
         rknn.init_runtime(core_mask=RKNNLite.NPU_CORE_0)
         logger.info("Threat detection model loaded (NPU)")
+        
+        # Update web server with active model info
+        if web_server:
+            web_server.active_model_name = os.path.basename(current_model_path)
+            web_server.rknn_instance = rknn
     else:
         net = cv2.dnn.readNetFromONNX(current_onnx_path)
         gpu_backend_enabled = False
@@ -108,6 +113,11 @@ def process_video_web(yolo_postprocess_func, web_server=None):
         if not gpu_backend_enabled:
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+            
+        # Update web server with active model info
+        if web_server:
+            web_server.active_model_name = os.path.basename(current_onnx_path)
+            web_server.rknn_instance = None
             logger.info("Threat detection model loaded (CPU)")
     
     # Start GPU monitoring if using GPU inference

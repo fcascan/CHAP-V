@@ -28,6 +28,9 @@ build/
 # Output images
 # images/inference_output_cam*.jpg
 
+# Processing results
+processing/results/
+
 # Temporary files
 *.tmp
 *.bak
@@ -37,6 +40,9 @@ build/
 # IDE-specific files
 .vscode/
 .idea/
+
+# AI agent instructions (project-specific)
+.github/copilot-instructions.md
 
 # Configurations
 # *.ini

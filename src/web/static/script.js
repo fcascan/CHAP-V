@@ -27,6 +27,7 @@ class YOLOWebInterface {
     init() {
         this.initSocket();
         this.initUI();
+        this.loadAvailableModels();
         this.loadConfig();
         this.refreshStatus();
         
@@ -129,6 +130,43 @@ class YOLOWebInterface {
         }
     }
 
+    async loadAvailableModels() {
+        try {
+            const response = await fetch('/api/models');
+            const models = await response.json();
+            
+            // Populate RKNN models dropdown
+            const rknnSelect = document.getElementById('model-rknn-select');
+            if (rknnSelect && models.rknn_models) {
+                rknnSelect.innerHTML = '';
+                models.rknn_models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    rknnSelect.appendChild(option);
+                });
+            }
+            
+            // Populate ONNX models dropdown
+            const onnxSelect = document.getElementById('model-onnx-select');
+            if (onnxSelect && models.onnx_models) {
+                onnxSelect.innerHTML = '';
+                models.onnx_models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    onnxSelect.appendChild(option);
+                });
+            }
+            
+            console.log('Available models loaded:', models);
+            
+        } catch (error) {
+            console.error('Error loading available models:', error);
+            this.addConsoleMessage('ERROR', 'Failed to load available models: ' + error.message);
+        }
+    }
+
     async loadConfig() {
         try {
             const response = await fetch('/api/config');
@@ -137,6 +175,8 @@ class YOLOWebInterface {
             // Update form fields with validation
             const benchmarkMode = document.getElementById('benchmark-mode');
             const inferenceDeviceSelect = document.getElementById('inference-device-select');
+            const modelRknnSelect = document.getElementById('model-rknn-select');
+            const modelOnnxSelect = document.getElementById('model-onnx-select');
             const maxCameras = document.getElementById('max-cameras');
             
             if (benchmarkMode) {
@@ -144,6 +184,12 @@ class YOLOWebInterface {
             }
             if (inferenceDeviceSelect) {
                 inferenceDeviceSelect.value = config.inference_device;
+            }
+            if (modelRknnSelect && config.model_rknn) {
+                modelRknnSelect.value = config.model_rknn;
+            }
+            if (modelOnnxSelect && config.model_onnx) {
+                modelOnnxSelect.value = config.model_onnx;
             }
             if (maxCameras && config.camera_config) {
                 maxCameras.value = config.camera_config.max_cameras;
@@ -178,6 +224,8 @@ class YOLOWebInterface {
             const config = {
                 benchmark_mode: formData.get('benchmark_mode') === 'true',
                 inference_device: formData.get('inference_device'),
+                model_rknn: formData.get('model_rknn'),
+                model_onnx: formData.get('model_onnx'),
                 max_cameras: parseInt(formData.get('max_cameras'))
             };
             
@@ -213,6 +261,7 @@ class YOLOWebInterface {
             document.getElementById('info-mode').textContent = 
                 status.current_mode.charAt(0).toUpperCase() + status.current_mode.slice(1);
             document.getElementById('info-device').textContent = status.inference_device;
+            document.getElementById('info-model').textContent = status.active_model || 'None loaded';
             document.getElementById('info-processing').textContent = 
                 status.processing_active ? 'Active' : 'Stopped';
             document.getElementById('info-frame').textContent = 

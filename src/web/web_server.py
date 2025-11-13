@@ -60,6 +60,10 @@ class WebServer:
         self.processing_active = False
         self.processing_thread = None
         
+        # Model tracking
+        self.active_model_name = None
+        self.rknn_instance = None
+        
         # Setup routes
         self.setup_routes()
         self.setup_socketio()
@@ -161,6 +165,8 @@ class WebServer:
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
                 'inference_device': INFERENCE_DEVICE,
+                'model_rknn': os.path.basename(MODEL_PATH) if MODEL_PATH else '',
+                'model_onnx': os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else '',
                 'paths': {
                     'model_rknn': MODEL_PATH,
                     'model_onnx': ONNX_MODEL_PATH,
@@ -195,6 +201,16 @@ class WebServer:
                 if 'inference_device' in data:
                     parser.set('INFERENCE', 'device', data['inference_device'])
                     
+                if 'model_rknn' in data and data['model_rknn']:
+                    # Update the model_rknn path to include assets/models/
+                    model_path = f"assets/models/{data['model_rknn']}"
+                    parser.set('PATHS', 'model_rknn', model_path)
+                    
+                if 'model_onnx' in data and data['model_onnx']:
+                    # Update the model_onnx path to include assets/models/
+                    model_path = f"assets/models/{data['model_onnx']}"
+                    parser.set('PATHS', 'model_onnx', model_path)
+                    
                 if 'max_cameras' in data:
                     parser.set('CAMERA', 'max_cameras_to_scan', str(data['max_cameras']))
                 
@@ -213,6 +229,37 @@ class WebServer:
                 })
                     
                 return jsonify({'status': 'success', 'message': 'Configuration updated and reloaded successfully'})
+                
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+                
+        @self.app.route('/api/models', methods=['GET'])
+        def get_available_models():
+            """Get available RKNN and ONNX models from assets/models directory"""
+            try:
+                models_dir = os.path.join(BASE_DIR, 'assets', 'models')
+                
+                if not os.path.exists(models_dir):
+                    return jsonify({'rknn_models': [], 'onnx_models': []})
+                
+                rknn_models = []
+                onnx_models = []
+                
+                # Scan for model files
+                for filename in os.listdir(models_dir):
+                    if filename.lower().endswith('.rknn'):
+                        rknn_models.append(filename)
+                    elif filename.lower().endswith('.onnx'):
+                        onnx_models.append(filename)
+                
+                # Sort the lists for better UX
+                rknn_models.sort()
+                onnx_models.sort()
+                
+                return jsonify({
+                    'rknn_models': rknn_models,
+                    'onnx_models': onnx_models
+                })
                 
             except Exception as e:
                 return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -242,6 +289,9 @@ class WebServer:
                 return jsonify({'status': 'error', 'message': 'No processing active'}), 400
                 
             self.processing_active = False
+            # Clear active model info
+            self.active_model_name = None
+            self.rknn_instance = None
             return jsonify({'status': 'success', 'message': 'Processing stopped'})
             
         @self.app.route('/api/status')
@@ -254,6 +304,7 @@ class WebServer:
                 'processing_active': self.processing_active,
                 'current_mode': 'benchmark' if BENCHMARK_MODE else 'camera',
                 'inference_device': INFERENCE_DEVICE,
+                'active_model': self.active_model_name,
                 'frame_available': self.video_manager.get_latest_frame() is not None
             }
             return jsonify(status)
@@ -483,6 +534,9 @@ class WebServer:
             logger.error(f"Processing failed: {e}")
         finally:
             self.processing_active = False
+            # Clear active model info
+            self.active_model_name = None
+            self.rknn_instance = None
 
         
     def start_console_broadcaster(self):
