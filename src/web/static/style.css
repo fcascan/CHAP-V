@@ -283,6 +283,30 @@ body {
     font-size: 0.8rem;
 }
 
+/* Save button animations */
+.btn.btn-save-success {
+    background-color: var(--success-color) !important;
+    animation: saveSuccess 0.6s ease;
+}
+
+.btn.btn-save-error {
+    background-color: var(--danger-color) !important;
+    animation: saveError 0.6s ease;
+}
+
+@keyframes saveSuccess {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); background-color: #2ecc71; }
+    100% { transform: scale(1); }
+}
+
+@keyframes saveError {
+    0% { transform: scale(1); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+    100% { transform: translateX(0); }
+}
+
 .control-buttons {
     display: flex;
     flex-direction: column;

@@ -219,7 +219,15 @@ class YOLOWebInterface {
             return;
         }
         
+        const saveBtn = document.getElementById('save-config-btn');
+        const originalText = saveBtn.textContent;
+        const originalClass = saveBtn.className;
+        
         try {
+            // Show loading state
+            saveBtn.textContent = 'Saving...';
+            saveBtn.disabled = true;
+            
             const formData = new FormData(document.getElementById('config-form'));
             const config = {
                 benchmark_mode: formData.get('benchmark_mode') === 'true',
@@ -240,15 +248,31 @@ class YOLOWebInterface {
             const result = await response.json();
             
             if (result.status === 'success') {
+                // Show success animation
+                saveBtn.className = 'btn btn-save-success';
+                saveBtn.textContent = 'Saved ✓';
                 this.addConsoleMessage('INFO', 'Configuration saved successfully');
                 this.loadConfig(); // Reload to update display
             } else {
+                // Show error animation
+                saveBtn.className = 'btn btn-save-error';
+                saveBtn.textContent = 'Error ✗';
                 this.addConsoleMessage('ERROR', 'Failed to save configuration: ' + result.message);
             }
             
         } catch (error) {
+            // Show error animation
+            saveBtn.className = 'btn btn-save-error';
+            saveBtn.textContent = 'Error ✗';
             console.error('Error saving configuration:', error);
             this.addConsoleMessage('ERROR', 'Failed to save configuration: ' + error.message);
+        } finally {
+            // Reset button after animation
+            setTimeout(() => {
+                saveBtn.textContent = originalText;
+                saveBtn.className = originalClass;
+                saveBtn.disabled = false;
+            }, 2000);
         }
     }
 

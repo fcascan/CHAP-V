@@ -29,7 +29,7 @@ build/
 # images/inference_output_cam*.jpg
 
 # Processing results
-processing/results/
+src/processing/results/
 
 # Temporary files
 *.tmp
