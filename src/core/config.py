@@ -12,7 +12,7 @@ parser = configparser.ConfigParser()
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
     
     # Clear and re-read the config file
     if is_reload:
@@ -44,6 +44,7 @@ def load_config(is_reload=False):
     
     FPS_TEXT_SIZE = parser.getfloat("IMAGE", "fps_text_size", fallback=0.5)
     LABEL_TEXT_SIZE = parser.getfloat("IMAGE", "label_text_size", fallback=0.4)
+    OVERLAY_ENABLED = parser.getboolean("IMAGE", "show_overlay", fallback=True)
     
     # Load camera settings
     MAX_CAMERAS_TO_SCAN = parser.getint("CAMERA", "max_cameras_to_scan", fallback=6)
@@ -112,6 +113,7 @@ def load_config(is_reload=False):
         f"  rockchip_target = {ROCKCHIP_TARGET}\n"
         f"  obj_threshold = {OBJ_THRESHOLD}\n"
         f"  nms_threshold = {NMS_THRESHOLD}\n"
+        f"  overlay = {'ON' if OVERLAY_ENABLED else 'OFF'}\n"
         f"  debug = {debug_status}\n"
         f"  max_cameras = {MAX_CAMERAS_TO_SCAN}"
     )
@@ -121,6 +123,7 @@ def load_config(is_reload=False):
         'benchmark_mode': BENCHMARK_MODE,
         'inference_device': INFERENCE_DEVICE,
         'debug_mode': DEBUG_MODE,
+        'overlay_enabled': OVERLAY_ENABLED,
         'max_cameras': MAX_CAMERAS_TO_SCAN,
         'img_size': IMG_SIZE,
         'classes': CLASSES

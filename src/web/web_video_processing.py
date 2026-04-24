@@ -14,6 +14,7 @@ import csv
 import logging
 from datetime import datetime
 from ..core import config
+from ..utils.frame_overlay import calculate_recent_average_ms, calculate_recent_fps, draw_processing_overlay
 from .video_integration import get_video_stream_manager
 from .console_integration import get_web_logger
 from ..processing.yolo11_inference import get_global_yolo11_engine, release_global_engine
@@ -26,9 +27,8 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     def reload_display_config():
         """Reload display-related configuration that can change during processing."""
         return {
-            'label_text_size': config.LABEL_TEXT_SIZE,
             'fps_text_size': config.FPS_TEXT_SIZE,
-            'classes': config.CLASSES
+            'overlay_enabled': config.OVERLAY_ENABLED
         }
     
     # Get current configuration dynamically
@@ -37,9 +37,8 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     current_onnx_path = config.ONNX_MODEL_PATH
     current_video_path = config.VIDEO_FILE_PATH
     current_img_size = config.IMG_SIZE
-    current_classes = config.CLASSES
-    current_label_text_size = config.LABEL_TEXT_SIZE
     current_fps_text_size = config.FPS_TEXT_SIZE
+    current_overlay_enabled = config.OVERLAY_ENABLED
     
     logger.info(f"Starting YOLO11 video processing with device: {current_device}")
     
@@ -207,9 +206,8 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         # Reload display configuration every 50 frames to catch web updates
         if processed_frames % 50 == 0:
             display_config = reload_display_config()
-            current_classes = display_config['classes']
-            current_label_text_size = display_config['label_text_size']
             current_fps_text_size = display_config['fps_text_size']
+            current_overlay_enabled = display_config['overlay_enabled']
         
         # Create display frame and count detections using YOLO11
         detections_count = 0
@@ -233,10 +231,8 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         if len(frame_times) > 30:
             frame_times.pop(0)
             
-        if len(frame_times) > 1:
-            fps_actual = (len(frame_times) - 1) / (frame_times[-1] - frame_times[0])
-        else:
-            fps_actual = 0.0
+        fps_actual = calculate_recent_fps(frame_times[-30:])
+        avg_inf_time_ms = calculate_recent_average_ms(inference_times[-30:])
         
         # Write metrics to CSV
         try:
@@ -285,13 +281,14 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         except Exception as e:
             logger.warning(f"Failed to write CSV row: {e}")
             
-        # Add overlay information
-        cv2.putText(frame_display, f"Frame: {processed_frames + 1}/{total_frames}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 0), 2)
-        cv2.putText(frame_display, f"Inf time: {inf_time*1000:.1f} ms", (10, 55),
-                    cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 255), 2)
-        cv2.putText(frame_display, f"FPS: {fps_actual:.2f}", (10, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (255, 255, 0), 2)
+        draw_processing_overlay(
+            frame_display,
+            current_overlay_enabled,
+            f"Frame: {processed_frames + 1}/{total_frames}",
+            inference_time_ms=avg_inf_time_ms,
+            fps_value=fps_actual,
+            text_size=current_fps_text_size,
+        )
         
         # Update web video stream
         video_manager.update_frame(frame_display)

@@ -12,6 +12,7 @@ import sys
 import numpy as np
 import pyudev
 from ..core.config import *
+from ..utils.frame_overlay import calculate_recent_average_ms, calculate_recent_fps, draw_processing_overlay
 from .video_integration import get_video_stream_manager
 from .console_integration import get_web_logger
 from ..processing.yolo11_inference import create_yolo11_engine
@@ -158,29 +159,26 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
             if len(inftime_per_camera[idx]) > 30:
                 inftime_per_camera[idx].pop(0)
                 
-            avg_inf_time_ms = 1000 * sum(inftime_per_camera[idx]) / len(inftime_per_camera[idx])
+            avg_inf_time_ms = calculate_recent_average_ms(inftime_per_camera[idx][-30:])
             
             now = time.time()
             display_timestamps[idx].append(now)
             if len(display_timestamps[idx]) > 30:
                 display_timestamps[idx].pop(0)
                 
-            display_fps = 0.0
-            if len(display_timestamps[idx]) > 1:
-                elapsed = display_timestamps[idx][-1] - display_timestamps[idx][0]
-                if elapsed > 0:
-                    display_fps = (len(display_timestamps[idx]) - 1) / elapsed
+            display_fps = calculate_recent_fps(display_timestamps[idx][-30:])
             
             # Create display frame
             imgs_to_draw[idx] = frame.copy()
             
-            # Add overlay information
-            cv2.putText(imgs_to_draw[idx], f"Camera {idx} - Frame: {camera_total_frames[idx]+1}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 0), 2)
-            cv2.putText(imgs_to_draw[idx], f"Inf time: {avg_inf_time_ms:.1f} ms", (10, 55),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (0, 255, 255), 2)
-            cv2.putText(imgs_to_draw[idx], f"FPS: {display_fps:.2f}", (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (255, 255, 0), 2)
+            draw_processing_overlay(
+                imgs_to_draw[idx],
+                OVERLAY_ENABLED,
+                f"Camera {idx} - Frame: {camera_total_frames[idx] + 1}",
+                inference_time_ms=avg_inf_time_ms,
+                fps_value=display_fps,
+                text_size=FPS_TEXT_SIZE,
+            )
             
             # Draw detections using YOLO11
             if boxes is not None and classes is not None and scores is not None:

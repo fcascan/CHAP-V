@@ -16,9 +16,12 @@ import os
 import cv2
 import argparse
 import configparser
+import time
 
+from src.core import config as app_config
 from coco_utils import COCO_test_helper
 import numpy as np
+from src.utils.frame_overlay import calculate_recent_average_ms, calculate_recent_fps, draw_processing_overlay
 
 
 # Default values; overridden from CLI args in __main__ before any function is called.
@@ -387,12 +390,15 @@ if __name__ == '__main__':
 
         print("Running inference. Press 'q' in the display window to stop.")
         _frame_count = 0
+        frame_times = []
+        inference_times = []
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
             _frame_count += 1
+            start_inference = time.time()
             input_data = preprocess_frame(frame, platform)
             outputs = model.run([input_data])
             if outputs is None:
@@ -401,8 +407,24 @@ if __name__ == '__main__':
             boxes, classes, scores = post_process(outputs)
             debug_detection_summary(boxes, classes, scores, frame_label='video frame')
 
+            end_inference = time.time()
+            inference_times.append(end_inference - start_inference)
+            frame_times.append(time.time())
+
+            fps_actual = calculate_recent_fps(frame_times[-30:])
+            avg_inf_time_ms = calculate_recent_average_ms(inference_times[-30:])
+
             if boxes is not None:
                 draw(frame, co_helper.get_real_box(boxes), scores, classes)
+
+            draw_processing_overlay(
+                frame,
+                app_config.OVERLAY_ENABLED,
+                f'Frame: {_frame_count}',
+                inference_time_ms=avg_inf_time_ms,
+                fps_value=fps_actual,
+                text_size=0.5,
+            )
 
             if writer is not None:
                 writer.write(frame)
