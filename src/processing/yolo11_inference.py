@@ -172,7 +172,7 @@ class YOLO11InferenceEngine:
     
     def draw_detections(self, frame, boxes, classes, scores):
         """
-        Draw detection results on frame using the yolo11_custom draw function.
+        Draw detection results on frame using the Rockchip draw function.
         
         Args:
             frame: OpenCV frame to draw on
