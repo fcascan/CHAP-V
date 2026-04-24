@@ -13,7 +13,6 @@ from ..core.config import *
 
 if INFERENCE_DEVICE == "NPU":
     from rknnlite.api import RKNNLite
-    from ..utils.rknn_post_processing import post_process
     from ..utils.my_htop import log_npu_usage
 elif INFERENCE_DEVICE == "GPU":
     from ..utils.my_htop import start_gpu_monitoring, stop_gpu_monitoring
@@ -123,7 +122,7 @@ def process_video(yolo_postprocess_func):
         if INFERENCE_DEVICE == "NPU":
             img_input = np.expand_dims(img, 0)
             outputs = rknn.inference(inputs=[img_input])
-            boxes, classes, scores = post_process(outputs)
+            boxes, classes, scores = yolo_postprocess_func(outputs, frame.shape)
         else:  # GPU or CPU
             blob = cv2.dnn.blobFromImage(img, 1/255.0, IMG_SIZE, swapRB=True, crop=False)
             net.setInput(blob)

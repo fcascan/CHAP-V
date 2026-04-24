@@ -14,15 +14,9 @@ import pyudev
 from ..core.config import *
 from .video_integration import get_video_stream_manager
 from .console_integration import get_web_logger
+from ..processing.yolo11_inference import create_yolo11_engine
 
-if INFERENCE_DEVICE == "NPU":
-    from rknnlite.api import RKNNLite
-    from ..utils.rknn_post_processing import post_process
-    from ..utils.my_htop import log_npu_usage
-elif INFERENCE_DEVICE == "GPU":
-    from ..utils.my_htop import start_gpu_monitoring, stop_gpu_monitoring
-
-def process_cameras_web(yolo_postprocess_func, web_server=None):
+def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     """Process cameras with web interface integration."""
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
@@ -64,66 +58,33 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
         
-    # Initialize inference engine
-    if INFERENCE_DEVICE == "NPU":
-        npu_cores = [RKNNLite.NPU_CORE_0, RKNNLite.NPU_CORE_1, RKNNLite.NPU_CORE_2]
-        rknn_instances = []
-        for idx, core in enumerate(npu_cores[:len(cameras)]):
-            rknn = RKNNLite()
-            rknn.load_rknn(MODEL_PATH)
-            rknn.init_runtime(core_mask=core)
-            rknn_instances.append(rknn)
-            # Model loaded on NPU core
+    # Initialize YOLO11 inference engines (one per camera for NPU, shared for GPU/CPU)
+    yolo_engines = []
+    try:
+        if INFERENCE_DEVICE == "NPU" and len(cameras) > 1:
+            # Create separate engines for each camera on NPU
+            for idx in range(len(cameras)):
+                engine = create_yolo11_engine(INFERENCE_DEVICE)
+                yolo_engines.append(engine)
+                logger.info(f"YOLO11 engine {idx} initialized for camera {idx}")
+                if DEBUG_MODE:
+                    logging.debug(f"[DEBUG] Camera {idx} engine platform: {engine.platform}")
+        else:
+            # Single shared engine for GPU/CPU or single camera
+            engine = create_yolo11_engine(INFERENCE_DEVICE)
+            yolo_engines = [engine]  # Use same engine for all cameras
+            logger.info(f"YOLO11 engine initialized for {INFERENCE_DEVICE} inference")
+            if DEBUG_MODE:
+                logging.debug(f"[DEBUG] Shared engine platform: {engine.platform}")
             
-        # Update web server with active model info (using first instance)
-        if web_server and rknn_instances:
-            web_server.active_model_name = os.path.basename(MODEL_PATH)
-            web_server.rknn_instance = rknn_instances[0]
-    else:
-        net = cv2.dnn.readNetFromONNX(ONNX_MODEL_PATH)
-        gpu_backend_enabled = False
-        
-        # Configure GPU backend if available (OpenCL for Mali G610)
-        if INFERENCE_DEVICE == "GPU":
-            try:
-                # Check if OpenCL is available
-                if not cv2.ocl.haveOpenCL():
-                    raise Exception("OpenCL not available")
-                
-                if not hasattr(cv2.dnn, 'DNN_TARGET_OPENCL'):
-                    raise Exception("DNN_TARGET_OPENCL not available")
-                
-                # Enable OpenCL and test GPU backend
-                cv2.ocl.setUseOpenCL(True)
-                net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-                net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
-                
-                # Create a small test to verify OpenCL works
-                test_blob = cv2.dnn.blobFromImage(np.zeros((640, 640, 3), dtype=np.uint8), 1/255.0, (640, 640), swapRB=True, crop=False)
-                net.setInput(test_blob)
-                net.forward()  # This will fail if OpenCL is not properly set up
-                
-                gpu_backend_enabled = True
-                logger.info("Threat detection model loaded (GPU)")
-            except Exception as e:
-                logger.warning(f"GPU initialization failed, falling back to CPU: {e}")
-                gpu_backend_enabled = False
-        
-        if not gpu_backend_enabled:
-            net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-            net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-            logger.info("Threat detection model loaded (CPU)")
+        # Update web server with active model info (using first engine)
+        if web_server and yolo_engines:
+            web_server.active_model_name = os.path.basename(yolo_engines[0].model_path)
+            web_server.rknn_instance = yolo_engines[0].model if hasattr(yolo_engines[0].model, 'rknn') else None
             
-        # Update web server with active model info
-        if web_server:
-            web_server.active_model_name = os.path.basename(ONNX_MODEL_PATH)
-            web_server.rknn_instance = None
-    
-    # Start GPU monitoring if using GPU inference
-    gpu_monitor_thread = None
-    if INFERENCE_DEVICE == "GPU":
-        gpu_monitor_thread = start_gpu_monitoring()
-        # GPU monitoring started
+    except Exception as e:
+        logger.error(f"Failed to initialize YOLO11 engines: {e}")
+        return
     
     # Start video stream manager
     video_manager.start()
@@ -162,20 +123,30 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
                 
             failure_counters[idx] = 0
             start_time = time.time()
-            img = cv2.resize(frame, IMG_SIZE)
             
             start_inference = time.time()
-            if INFERENCE_DEVICE == "NPU":
-                img_input = np.expand_dims(img, 0)
-                outputs = rknn_instances[idx].inference(inputs=[img_input])
-                boxes, classes, scores = post_process(outputs)
-            else:  # GPU or CPU
-                blob = cv2.dnn.blobFromImage(img, 1/255.0, IMG_SIZE, swapRB=True, crop=False)
-                net.setInput(blob)
-                outputs = net.forward()
-                boxes, classes, scores = yolo_postprocess_func(outputs, frame.shape)
-                
+            
+            # YOLO11 inference with camera-specific debug logging
+            if DEBUG_MODE:
+                logging.debug(f"[DEBUG] Camera {idx} processing frame {camera_total_frames[idx] + 1}")
+                logging.debug(f"[DEBUG] Camera {idx} frame shape: {frame.shape}")
+            
+            # Use appropriate engine (separate for NPU multi-camera, shared for others)
+            engine_idx = idx if len(yolo_engines) > 1 else 0
+            current_engine = yolo_engines[engine_idx]
+            
+            boxes, classes, scores, processed_frame = current_engine.detect_objects(frame)
+            
             end_inference = time.time()
+            
+            # Debug logging for camera inference results
+            if DEBUG_MODE:
+                if boxes is not None:
+                    logging.debug(f"[DEBUG] Camera {idx} inference: {len(boxes)} detections found")
+                    detection_summary = current_engine.get_detection_summary(boxes, classes, scores)
+                    logging.debug(f"[DEBUG] Camera {idx} detection classes: {detection_summary['class_counts']}")
+                else:
+                    logging.debug(f"[DEBUG] Camera {idx} inference: No detections found")
             inf_time = end_inference - start_inference
             camera_inference_times[idx].append(inf_time)
             
@@ -211,16 +182,16 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
             cv2.putText(imgs_to_draw[idx], f"FPS: {display_fps:.2f}", (10, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, FPS_TEXT_SIZE, (255, 255, 0), 2)
             
-            # Draw detections
+            # Draw detections using YOLO11
             if boxes is not None and classes is not None and scores is not None:
-                for b, label, s in [(box, CLASSES[c], score) for box, c, score in zip(boxes, classes, scores) if c < len(CLASSES)]:
-                    x1, y1, x2, y2 = map(int, b)
-                    red = int(255 * s)
-                    green = int(255 * (1 - s))
-                    score_color = (0, green, red)
-                    cv2.rectangle(imgs_to_draw[idx], (x1, y1), (x2, y2), score_color, 2)
-                    cv2.putText(imgs_to_draw[idx], f"{label}: {s:.2f}", (x1 + 5, y1 + 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, LABEL_TEXT_SIZE, score_color, 2)
+                # Use YOLO11's draw function for consistent rendering
+                current_engine.draw_detections(imgs_to_draw[idx], boxes, classes, scores)
+                
+                # Debug logging for camera-specific detections
+                if DEBUG_MODE:
+                    for i, (box, cls, score) in enumerate(zip(boxes, classes, scores)):
+                        class_name = current_engine.get_class_name(cls)
+                        logging.debug(f"[DEBUG] Camera {idx} detection {i+1}: {class_name} @ {box} (score: {score:.3f})")
             
             # Save image output
             if imgs_to_draw[idx] is not None:
@@ -237,13 +208,16 @@ def process_cameras_web(yolo_postprocess_func, web_server=None):
         
     end_global = time.time()
     
-    # Stop GPU monitoring if it was started
-    if INFERENCE_DEVICE == "GPU" and gpu_monitor_thread:
-        stop_gpu_monitoring()
-        # GPU monitoring stopped
-    
     # Stop video stream manager
     video_manager.stop()
+    
+    # Cleanup YOLO11 engines
+    for engine in yolo_engines:
+        try:
+            engine.release()
+            logger.info("YOLO11 engine resources released")
+        except Exception as e:
+            logger.warning(f"Error releasing YOLO11 engine: {e}")
     
     # Cleanup cameras
     for cap in cameras:

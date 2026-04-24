@@ -178,6 +178,7 @@ class YOLOWebInterface {
             const modelRknnSelect = document.getElementById('model-rknn-select');
             const modelOnnxSelect = document.getElementById('model-onnx-select');
             const maxCameras = document.getElementById('max-cameras');
+            const debugMode = document.getElementById('debug-mode');
             
             if (benchmarkMode) {
                 benchmarkMode.value = config.benchmark_mode.toString();
@@ -193,6 +194,9 @@ class YOLOWebInterface {
             }
             if (maxCameras && config.camera_config) {
                 maxCameras.value = config.camera_config.max_cameras;
+            }
+            if (debugMode && config.debug_mode !== undefined) {
+                debugMode.value = config.debug_mode.toString();
             }
             
             const infoMode = document.getElementById('info-mode');
@@ -234,7 +238,8 @@ class YOLOWebInterface {
                 inference_device: formData.get('inference_device'),
                 model_rknn: formData.get('model_rknn'),
                 model_onnx: formData.get('model_onnx'),
-                max_cameras: parseInt(formData.get('max_cameras'))
+                max_cameras: parseInt(formData.get('max_cameras')),
+                debug_mode: formData.get('debug_mode') === 'true',
             };
             
             const response = await fetch('/api/config', {

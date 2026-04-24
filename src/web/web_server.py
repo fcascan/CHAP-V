@@ -72,55 +72,66 @@ class WebServer:
             
     def generate_video_stream(self, camera_id=None):
         """Generate video stream for web interface"""
-        import cv2  # Ensure cv2 is available locally
-        import numpy as np  # Ensure numpy is available locally
+        import cv2
+        import numpy as np
+        
+        frame_count = 0
+        blank_frame = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xaa\xff\xd9'
         
         while True:
             try:
                 frame = self.video_manager.get_latest_frame(camera_id)
+                
+                # Debug logging for video stream
+                if DEBUG_MODE and frame_count % 30 == 0:
+                    logging.debug(f"[DEBUG] Video stream frame {frame_count}, camera_id: {camera_id}, frame available: {frame is not None}")
+                    if frame is not None:
+                        logging.debug(f"[DEBUG] Frame shape: {frame.shape}, processing_active: {self.processing_active}")
+                
                 if frame is not None:
                     # Encode frame to JPEG
-                    ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     if ret:
                         frame_data = jpeg.tobytes()
                         yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
                     else:
-                        # Send a blank frame if encoding fails
-                        blank_frame = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xaa\xff\xd9'
                         yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + blank_frame + b'\r\n')
                 else:
-                    # Send a placeholder message frame
+                    # Create placeholder frame
                     try:
                         placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
-                        cv2.putText(placeholder, 'No video stream available', (120, 220), 
+                        cv2.putText(placeholder, 'No video stream available', (120, 200), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                        cv2.putText(placeholder, 'Start processing to see live video', (100, 260), 
+                        cv2.putText(placeholder, 'Start processing to see live video', (100, 240), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (128, 128, 128), 2)
-                        ret, jpeg = cv2.imencode('.jpg', placeholder, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        
+                        if DEBUG_MODE:
+                            cv2.putText(placeholder, f'Debug: Frame {frame_count}, Active: {self.processing_active}', (10, 280), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                            
+                        ret, jpeg = cv2.imencode('.jpg', placeholder)
                         if ret:
                             frame_data = jpeg.tobytes()
                             yield (b'--frame\r\n'
                                    b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
                         else:
-                            # Fallback to blank frame if encoding fails
-                            blank_frame = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xaa\xff\xd9'
                             yield (b'--frame\r\n'
                                    b'Content-Type: image/jpeg\r\n\r\n' + blank_frame + b'\r\n')
-                    except Exception as e:
-                        # Fallback minimal frame
-                        blank_frame = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xaa\xff\xd9'
+                    except Exception:
                         yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + blank_frame + b'\r\n')
                         
+                frame_count += 1
+                        
             except Exception as e:
-                # Handle any other errors gracefully
-                blank_frame = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xaa\xff\xd9'
+                if DEBUG_MODE:
+                    logging.debug(f"[DEBUG] Video stream error: {e}")
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + blank_frame + b'\r\n')
                 
-            time.sleep(0.05)  # 20 FPS for better stability
+            time.sleep(0.05)  # 20 FPS
             
     def setup_routes(self):
         """Setup Flask routes"""
@@ -160,11 +171,12 @@ class WebServer:
             # Import fresh values to ensure we get the latest configuration
             from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH
             from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
-            from ..core.config import MAX_CAMERAS_TO_SCAN, CLASSES
+            from ..core.config import MAX_CAMERAS_TO_SCAN, CLASSES, DEBUG_MODE
             
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
                 'inference_device': INFERENCE_DEVICE,
+                'debug_mode': DEBUG_MODE,
                 'model_rknn': os.path.basename(MODEL_PATH) if MODEL_PATH else '',
                 'model_onnx': os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else '',
                 'paths': {
@@ -213,6 +225,9 @@ class WebServer:
                     
                 if 'max_cameras' in data:
                     parser.set('CAMERA', 'max_cameras_to_scan', str(data['max_cameras']))
+                    
+                if 'debug_mode' in data:
+                    parser.set('INFERENCE', 'debug_mode', str(data['debug_mode']).lower())
                 
                 # Write updated config
                 with open(config_path, 'w') as configfile:
@@ -499,10 +514,9 @@ class WebServer:
         return monitor_data
         
     def _run_processing(self):
-        """Run YOLO processing with web integration"""
+        """Run YOLO11 processing with web integration"""
         try:
             from src.core.system_setup import setup_system, setup_inference_device, disable_unnecessary_logging
-            from src.processing.yolo_post import yolo_onnx_postprocess
             from .web_video_processing import process_video_web
             from .web_camera_processing import process_cameras_web
             from .console_integration import start_console_capture, get_web_logger
@@ -523,20 +537,44 @@ class WebServer:
             # Disable unnecessary logging
             disable_unnecessary_logging()
             
-            logger.info(f"Starting processing in {'BENCHMARK' if BENCHMARK_MODE else 'CAMERA'} mode using {actual_device}")
+            logger.info(f"Starting YOLO11 processing in {'BENCHMARK' if BENCHMARK_MODE else 'CAMERA'} mode using {actual_device}")
+            
+            # Update active model info
+            from ..core.config import MODEL_PATH, ONNX_MODEL_PATH
+            if actual_device == "NPU":
+                self.active_model_name = os.path.basename(MODEL_PATH) if MODEL_PATH else "Unknown RKNN Model"
+            else:
+                self.active_model_name = os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else "Unknown ONNX Model"
+            
+            # Emit processing start event
+            self.socketio.emit('processing_started', {
+                'mode': 'BENCHMARK' if BENCHMARK_MODE else 'CAMERA',
+                'device': actual_device,
+                'engine': 'YOLO11',
+                'model': self.active_model_name
+            })
             
             if BENCHMARK_MODE:
-                process_video_web(yolo_onnx_postprocess, self)
+                process_video_web(web_server=self)
             else:
-                process_cameras_web(yolo_onnx_postprocess, self)
+                process_cameras_web(web_server=self)
                 
         except Exception as e:
-            logger.error(f"Processing failed: {e}")
+            logger.error(f"YOLO11 processing failed: {e}")
+            # Emit error event to web interface
+            self.socketio.emit('processing_error', {
+                'error': str(e),
+                'engine': 'YOLO11'
+            })
         finally:
             self.processing_active = False
             # Clear active model info
             self.active_model_name = None
             self.rknn_instance = None
+            # Emit processing stopped event
+            self.socketio.emit('processing_stopped', {
+                'engine': 'YOLO11'
+            })
 
         
     def start_console_broadcaster(self):

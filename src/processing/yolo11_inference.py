@@ -1,0 +1,324 @@
+# -*- coding: utf-8 -*-
+"""yolo11_inference.py
+YOLO11 Inference Engine Integration
+by fcascan 2025
+"""
+import os
+import cv2
+import numpy as np
+import logging
+from types import SimpleNamespace
+
+from ..core import config as app_config
+from rockchip import yolo11_infer as rockchip_yolo
+from rockchip.coco_utils import COCO_test_helper
+
+
+def _sync_rockchip_runtime_config():
+    """Sync the Rockchip module globals with the active application config."""
+    rockchip_yolo.OBJ_THRESH = app_config.OBJ_THRESHOLD
+    rockchip_yolo.NMS_THRESH = app_config.NMS_THRESHOLD
+    rockchip_yolo.IMG_SIZE = app_config.IMG_SIZE
+    rockchip_yolo.CLASSES = tuple(app_config.CLASSES)
+    rockchip_yolo.coco_id_list = list(range(len(app_config.CLASSES)))
+    if hasattr(rockchip_yolo, 'DEBUG_DETECTIONS'):
+        rockchip_yolo.DEBUG_DETECTIONS = app_config.DEBUG_MODE
+
+
+class YOLO11InferenceEngine:
+    """
+    YOLO11 Inference Engine wrapper that delegates detection to the Rockchip
+    yolo11 implementation while preserving the existing application API.
+    """
+    
+    def __init__(self, model_path, target_platform=None, device_id=None):
+        """
+        Initialize YOLO11 inference engine.
+        
+        Args:
+            model_path: Path to the model file (.rknn, .onnx, or .pt)
+            target_platform: Target NPU platform (e.g., 'rk3588', 'rk3566'). If None, uses ROCKCHIP_TARGET from config.
+            device_id: Device ID for multi-device setups
+        """
+        self.model_path = model_path
+        app_config.reload_config()
+        _sync_rockchip_runtime_config()
+
+        # Use configuration value if target_platform is not specified
+        self.target_platform = target_platform if target_platform is not None else app_config.ROCKCHIP_TARGET
+        self.device_id = device_id
+        self.model = None
+        self.platform = None
+        self.coco_helper = COCO_test_helper(enable_letter_box=True)
+        # The Rockchip script uses a module-level co_helper in preprocess_frame.
+        rockchip_yolo.co_helper = self.coco_helper
+
+        try:
+            self.model, self.platform = rockchip_yolo.setup_model(
+                SimpleNamespace(
+                    model_path=model_path,
+                    target=self.target_platform,
+                    device_id=device_id,
+                )
+            )
+            logging.info(f"YOLO11 model loaded: {model_path} on platform: {self.platform}")
+            logging.info(f"Using Rockchip target: {self.target_platform} (from config)")
+            logging.info(f"Using thresholds: OBJ={app_config.OBJ_THRESHOLD}, NMS={app_config.NMS_THRESHOLD} (from config)")
+            logging.info(f"Model will use {len(app_config.CLASSES)} custom classes")
+        except Exception as e:
+            logging.error(f"Failed to setup YOLO11 model: {e}")
+            raise
+    
+    def preprocess_frame(self, frame):
+        """
+        Preprocess frame for inference using letterbox approach.
+        
+        Args:
+            frame: Input OpenCV frame (BGR format)
+            
+        Returns:
+            Preprocessed input data ready for inference
+        """
+        input_data = rockchip_yolo.preprocess_frame(frame, self.platform)
+        
+        if app_config.DEBUG_MODE:
+            logging.debug(f"[DEBUG] Input shape: {input_data.shape}")
+        
+        return input_data
+    
+    def run_inference(self, input_data):
+        """
+        Run inference on preprocessed input data.
+        
+        Args:
+            input_data: Preprocessed input data
+            
+        Returns:
+            Raw model outputs
+        """
+        try:
+            outputs = self.model.run([input_data])
+            return outputs
+        except Exception as e:
+            logging.error(f"Inference failed: {e}")
+            return None
+    
+    def postprocess_outputs(self, outputs):
+        """
+        Postprocess model outputs to get detection results.
+        
+        Args:
+            outputs: Raw model outputs
+            
+        Returns:
+            Tuple of (boxes, classes, scores) or (None, None, None) if no detections
+        """
+        if outputs is None:
+            logging.debug("No outputs to postprocess")
+            return None, None, None
+            
+        try:
+            logging.debug(f"Starting postprocessing with {len(outputs)} output tensors")
+            boxes, classes, scores = rockchip_yolo.post_process(outputs)
+            if boxes is not None:
+                logging.debug(f"Postprocessing successful: {len(boxes)} detections")
+            else:
+                logging.debug("Postprocessing completed: no detections")
+            return boxes, classes, scores
+        except Exception as e:
+            logging.error(f"Postprocessing failed: {e}")
+            logging.error(f"Output info: {[o.shape if hasattr(o, 'shape') else type(o) for o in outputs]}")
+            return None, None, None
+    
+    def detect_objects(self, frame):
+        """
+        Complete object detection pipeline: preprocess -> inference -> postprocess.
+        
+        Args:
+            frame: Input OpenCV frame (BGR format)
+            
+        Returns:
+            Tuple of (boxes, classes, scores, processed_frame)
+            boxes: Array of bounding boxes in original frame coordinates
+            classes: Array of class indices
+            scores: Array of confidence scores
+            processed_frame: Frame with letterbox applied (for debugging)
+        """
+        if app_config.DEBUG_MODE:
+            logging.debug(f"YOLO11 processing frame: {frame.shape}")
+        
+        # Preprocess
+        input_data = self.preprocess_frame(frame)
+        
+        # Inference
+        outputs = self.run_inference(input_data)
+        
+        # Postprocess
+        boxes, classes, scores = self.postprocess_outputs(outputs)
+        
+        # Show detection results
+        if boxes is not None:
+            summary = self.get_detection_summary(boxes, classes, scores)
+            print(f"[DETECTIONS] Classes found: {summary['class_counts']}")
+            if app_config.DEBUG_MODE:
+                logging.debug(f"Detection result: {len(boxes)} objects found")
+        
+        # Convert boxes back to original frame coordinates
+        if boxes is not None:
+            real_boxes = self.coco_helper.get_real_box(boxes)
+            return real_boxes, classes, scores, input_data
+        else:
+            return None, None, None, input_data
+    
+    def draw_detections(self, frame, boxes, classes, scores):
+        """
+        Draw detection results on frame using the yolo11_custom draw function.
+        
+        Args:
+            frame: OpenCV frame to draw on
+            boxes: Detection bounding boxes
+            classes: Detection class indices  
+            scores: Detection confidence scores
+            
+        Returns:
+            Frame with detections drawn
+        """
+        if boxes is not None and classes is not None and scores is not None:
+            rockchip_yolo.draw(frame, boxes, scores, classes)
+        return frame
+    
+    def get_detection_summary(self, boxes, classes, scores, score_threshold=0.5):
+        """
+        Get a summary of detections with custom class names.
+        
+        Args:
+            boxes: Detection bounding boxes
+            classes: Detection class indices
+            scores: Detection confidence scores
+            score_threshold: Minimum score threshold
+            
+        Returns:
+            dict: Detection summary with class counts and high-confidence detections
+        """
+        if boxes is None or classes is None or scores is None:
+            return {'class_counts': {}, 'high_confidence': []}
+
+        class_counts = {}
+        high_confidence = []
+        for box, class_id, score in zip(boxes, classes, scores):
+            class_index = int(class_id)
+            class_name = self.get_class_name(class_index)
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+            if float(score) >= score_threshold:
+                high_confidence.append({'class': class_name, 'score': float(score), 'box': box.tolist() if hasattr(box, 'tolist') else box})
+
+        return {'class_counts': class_counts, 'high_confidence': high_confidence}
+    
+    def get_class_name(self, class_id):
+        """
+        Get class name from class ID using project configuration.
+        
+        Args:
+            class_id: Integer class ID
+            
+        Returns:
+            str: Class name or "Unknown" if ID is out of range
+        """
+        if 0 <= int(class_id) < len(app_config.CLASSES):
+            return app_config.CLASSES[int(class_id)]
+        return f"class_{int(class_id)}"
+    
+    def validate_model_compatibility(self):
+        """
+        Validate that the model output matches the configured classes.
+        
+        Returns:
+            bool: True if model and config are compatible
+        """
+        return True
+    
+    def release(self):
+        """Release model resources."""
+        if self.model:
+            try:
+                self.model.release()
+                logging.info("YOLO11 model resources released")
+            except Exception as e:
+                logging.warning(f"Error releasing model: {e}")
+
+
+def create_yolo11_engine(device_type="NPU"):
+    """
+    Factory function to create YOLO11 inference engine based on configuration.
+    
+    Args:
+        device_type: Inference device type ("NPU", "GPU", "CPU")
+        
+    Returns:
+        YOLO11InferenceEngine instance
+    """
+    if device_type == "NPU":
+        model_path = app_config.MODEL_PATH
+        platform = app_config.ROCKCHIP_TARGET
+    elif device_type in ["GPU", "CPU"]:
+        model_path = app_config.ONNX_MODEL_PATH
+        platform = app_config.ROCKCHIP_TARGET
+    else:
+        raise ValueError(f"Unsupported device type: {device_type}")
+    
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    
+    logging.info(f"Creating YOLO11 engine for {device_type} with target {platform} (from config)")
+    logging.info(f"Model path: {model_path}")
+    logging.info(f"Using {len(app_config.CLASSES)} custom classes from config")
+    logging.info(f"Using detection thresholds: OBJ={app_config.OBJ_THRESHOLD}, NMS={app_config.NMS_THRESHOLD}")
+    
+    return YOLO11InferenceEngine(model_path, platform)
+
+
+def yolo11_postprocess_wrapper(outputs, original_shape):
+    """
+    Wrapper function to maintain compatibility with existing yolo_postprocess_func signature.
+    This is used as a drop-in replacement for the existing postprocessing functions.
+    
+    Args:
+        outputs: Raw model outputs
+        original_shape: Original frame shape (for compatibility, not used in yolo11)
+        
+    Returns:
+        Tuple of (boxes, classes, scores)
+    """
+    try:
+        boxes, classes, scores = rockchip_yolo.post_process(outputs)
+        return boxes, classes, scores
+    except Exception as e:
+        logging.error(f"YOLO11 postprocessing failed: {e}")
+        return None, None, None
+
+
+# Global inference engine instance (singleton pattern)
+_global_engine = None
+
+def get_global_yolo11_engine(device_type="NPU"):
+    """
+    Get or create global YOLO11 inference engine instance.
+    Uses singleton pattern to avoid recreating the engine multiple times.
+    
+    Args:
+        device_type: Inference device type
+        
+    Returns:
+        YOLO11InferenceEngine instance
+    """
+    global _global_engine
+    if _global_engine is None:
+        _global_engine = create_yolo11_engine(device_type)
+    return _global_engine
+
+def release_global_engine():
+    """Release global inference engine resources."""
+    global _global_engine
+    if _global_engine:
+        _global_engine.release()
+        _global_engine = None

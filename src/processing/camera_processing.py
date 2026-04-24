@@ -68,7 +68,6 @@ def process_cameras(yolo_postprocess_func):
     if current_device == "NPU":
         try:
             from rknnlite.api import RKNNLite
-            from ..utils.rknn_post_processing import post_process
             from ..utils.my_htop import log_npu_usage
             
             npu_cores = [RKNNLite.NPU_CORE_0, RKNNLite.NPU_CORE_1, RKNNLite.NPU_CORE_2]
@@ -168,7 +167,7 @@ def process_cameras(yolo_postprocess_func):
             if current_device == "NPU" and idx < len(rknn_instances):
                 img_input = np.expand_dims(img, 0)
                 outputs = rknn_instances[idx].inference(inputs=[img_input])
-                boxes, classes, scores = post_process(outputs)
+                boxes, classes, scores = yolo_postprocess_func(outputs, frame.shape)
             else:  # GPU or CPU
                 blob = cv2.dnn.blobFromImage(img, 1/255.0, current_img_size, swapRB=True, crop=False)
                 net.setInput(blob)
@@ -194,8 +193,8 @@ def process_cameras(yolo_postprocess_func):
                 if elapsed > 0:
                     display_fps = (len(display_timestamps[idx]) - 1) / elapsed
             imgs_to_draw[idx] = frame.copy()
-            # Etiquetas igual que en modo video
-                                    cv2.putText(imgs_to_draw[idx], f"Cam {idx}: {inf_time:.1f} ms", (10, 30 + idx*25),
+            # Add overlay information
+            cv2.putText(imgs_to_draw[idx], f"Camera {idx} - Frame: {camera_total_frames[idx]+1}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 0), 2)
             cv2.putText(imgs_to_draw[idx], f"Inf time: {avg_inf_time_ms:.1f} ms", (10, 55),
                         cv2.FONT_HERSHEY_SIMPLEX, current_fps_text_size, (0, 255, 255), 2)

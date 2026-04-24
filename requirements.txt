@@ -14,5 +14,5 @@ eventlet>=0.33.0
 # Note: rknnlite will be installed from local wheel file
 # rknn_toolkit_lite2>=2.3.0
 
-# Optional: ONNX runtime for CPU fallback
-# onnxruntime>=1.15.0
+# ONNX runtime for CPU fallback
+onnxruntime>=1.15.0

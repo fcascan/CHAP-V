@@ -11,8 +11,8 @@ parser = configparser.ConfigParser()
 
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
-    global parser, BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH
-    global VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, MAX_CAMERAS_TO_SCAN, CLASSES
+    global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, MAX_CAMERAS_TO_SCAN, CLASSES
     
     # Clear and re-read the config file
     if is_reload:
@@ -22,6 +22,10 @@ def load_config(is_reload=False):
     # Load all configuration values
     BENCHMARK_MODE = parser.getboolean("MODE", "benchmark_mode", fallback=False)
     INFERENCE_DEVICE = parser.get("INFERENCE", "device", fallback="NPU").strip().upper()
+    ROCKCHIP_TARGET = parser.get("INFERENCE", "rockchip_target", fallback="rk3588").strip().lower()
+    OBJ_THRESHOLD = parser.getfloat("INFERENCE", "obj_threshold", fallback=0.25)
+    NMS_THRESHOLD = parser.getfloat("INFERENCE", "nms_threshold", fallback=0.45)
+    DEBUG_MODE = parser.getboolean("INFERENCE", "debug_mode", fallback=False)
     
     # Load paths
     model_rknn_cfg = parser.get("PATHS", "model_rknn", fallback="assets/models/yolov11n.rknn")
@@ -55,13 +59,49 @@ def load_config(is_reload=False):
         labels = [name.strip() for name in default_labels_cfg.split(",")]
     CLASSES = tuple(labels)
     
+    # Configure logging level based on debug mode
+    import logging
+    
+    # Clear any existing handlers to avoid conflicts
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
+    if DEBUG_MODE:
+        logging.basicConfig(
+            level=logging.DEBUG, 
+            format='[%(asctime)s] %(levelname)s: %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        logging.debug("Debug mode enabled - detailed inference logging active")
+        
+        # Enable RKNN verbose logging if available
+        os.environ['RKNN_LOG_LEVEL'] = '1'  # Enable verbose RKNN logging
+        
+    else:
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='[%(asctime)s] %(levelname)s: %(message)s',
+            datefmt='%H:%M:%S'
+        )
+    
     action = "reloaded" if is_reload else "loaded"
-    print(f"[CONFIG] Configuration {action}: benchmark_mode={BENCHMARK_MODE}, device={INFERENCE_DEVICE}, max_cameras={MAX_CAMERAS_TO_SCAN}")
+    debug_status = "ON" if DEBUG_MODE else "OFF"
+    logging.info(
+        f"[CONFIG] Configuration {action}:\n"
+        f"  benchmark_mode = {BENCHMARK_MODE}\n"
+        f"  device = {INFERENCE_DEVICE}\n"
+        f"  rockchip_target = {ROCKCHIP_TARGET}\n"
+        f"  obj_threshold = {OBJ_THRESHOLD}\n"
+        f"  nms_threshold = {NMS_THRESHOLD}\n"
+        f"  debug = {debug_status}\n"
+        f"  max_cameras = {MAX_CAMERAS_TO_SCAN}"
+    )
     
     # Return updated config for convenience
     return {
         'benchmark_mode': BENCHMARK_MODE,
         'inference_device': INFERENCE_DEVICE,
+        'debug_mode': DEBUG_MODE,
         'max_cameras': MAX_CAMERAS_TO_SCAN,
         'img_size': IMG_SIZE,
         'classes': CLASSES
