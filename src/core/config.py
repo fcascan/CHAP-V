@@ -12,7 +12,7 @@ parser = configparser.ConfigParser()
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, MAX_CAMERAS_TO_SCAN, CLASSES
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
     
     # Clear and re-read the config file
     if is_reload:
@@ -48,15 +48,34 @@ def load_config(is_reload=False):
     # Load camera settings
     MAX_CAMERAS_TO_SCAN = parser.getint("CAMERA", "max_cameras_to_scan", fallback=6)
     
-    # Load classes
-    MODEL_LABELS_PATH = parser.get("PATHS", "model_labels", fallback=None)
-    labels = None
-    if MODEL_LABELS_PATH and os.path.exists(os.path.join(BASE_DIR, MODEL_LABELS_PATH)):
-        with open(os.path.join(BASE_DIR, MODEL_LABELS_PATH), "r") as f:
+    # Load classes with fallback order:
+    # 1) PATHS.model_labels from config.ini
+    # 2) project-root yolo11n.txt
+    # 3) CLASSES.default_labels from config.ini
+    model_labels_cfg = parser.get("PATHS", "model_labels", fallback="").strip()
+    MODEL_LABELS_FILE_PATH = None
+    labels = []
+
+    if model_labels_cfg:
+        configured_labels_path = model_labels_cfg
+        if not os.path.isabs(configured_labels_path):
+            configured_labels_path = os.path.join(BASE_DIR, configured_labels_path)
+        if os.path.isfile(configured_labels_path):
+            MODEL_LABELS_FILE_PATH = configured_labels_path
+
+    if MODEL_LABELS_FILE_PATH is None:
+        yolo11n_fallback = os.path.join(BASE_DIR, "yolo11n.txt")
+        if os.path.isfile(yolo11n_fallback):
+            MODEL_LABELS_FILE_PATH = yolo11n_fallback
+
+    if MODEL_LABELS_FILE_PATH is not None:
+        with open(MODEL_LABELS_FILE_PATH, "r", encoding="utf-8") as f:
             labels = [line.strip() for line in f if line.strip()]
-    else:
+
+    if not labels:
         default_labels_cfg = parser.get("CLASSES", "default_labels", fallback="person")
-        labels = [name.strip() for name in default_labels_cfg.split(",")]
+        labels = [name.strip() for name in default_labels_cfg.split(",") if name.strip()]
+
     CLASSES = tuple(labels)
     
     # Configure logging level based on debug mode

@@ -15,6 +15,7 @@
 import os
 import cv2
 import argparse
+import configparser
 
 from coco_utils import COCO_test_helper
 import numpy as np
@@ -27,6 +28,77 @@ IMG_SIZE: tuple = (640, 640)
 CLASSES: tuple = ()
 coco_id_list: list = []
 DEBUG_DETECTIONS: bool = False
+
+
+def _load_labels_from_file(labels_file):
+    """
+    Load class labels from a text file.
+
+    Parameters:
+    - labels_file: Absolute path to a labels file with one class per line.
+
+    Returns:
+    - A tuple of non-empty class names.
+
+    Business rule:
+    - Empty lines are ignored.
+    """
+    with open(labels_file, 'r', encoding='utf-8') as f:
+        return tuple(line.strip() for line in f if line.strip())
+
+
+def resolve_runtime_classes(cli_classes_file):
+    """
+    Resolve runtime classes using the project fallback chain.
+
+    Parameters:
+    - cli_classes_file: Optional labels file path provided by --classes_file.
+
+    Returns:
+    - (classes_tuple, source_description)
+
+    Business rules:
+    - Priority is config PATHS.model_labels, then project yolo11n.txt, then config CLASSES.default_labels.
+    - If --classes_file is provided and exists, it has the highest priority.
+    """
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    config_path = os.path.join(project_root, 'config.ini')
+    parser = configparser.ConfigParser()
+    parser.read(config_path)
+
+    if cli_classes_file:
+        cli_path = cli_classes_file
+        if not os.path.isabs(cli_path):
+            cli_path = os.path.join(project_root, cli_path)
+        if os.path.isfile(cli_path):
+            labels = _load_labels_from_file(cli_path)
+            if labels:
+                return labels, f'--classes_file ({cli_path})'
+        else:
+            print(f'[WARN] classes_file not found: {cli_classes_file}')
+
+    model_labels_cfg = parser.get('PATHS', 'model_labels', fallback='').strip()
+    if model_labels_cfg:
+        model_labels_path = model_labels_cfg
+        if not os.path.isabs(model_labels_path):
+            model_labels_path = os.path.join(project_root, model_labels_path)
+        if os.path.isfile(model_labels_path):
+            labels = _load_labels_from_file(model_labels_path)
+            if labels:
+                return labels, f'config PATHS.model_labels ({model_labels_path})'
+
+    yolo11n_fallback = os.path.join(project_root, 'yolo11n.txt')
+    if os.path.isfile(yolo11n_fallback):
+        labels = _load_labels_from_file(yolo11n_fallback)
+        if labels:
+            return labels, f'project fallback ({yolo11n_fallback})'
+
+    default_labels_cfg = parser.get('CLASSES', 'default_labels', fallback='person')
+    default_labels = tuple(label.strip() for label in default_labels_cfg.split(',') if label.strip())
+    if default_labels:
+        return default_labels, 'config CLASSES.default_labels'
+
+    return ('person',), 'hard fallback (person)'
 
 
 def filter_boxes(boxes, box_confidences, box_class_probs):
@@ -277,26 +349,9 @@ if __name__ == '__main__':
     DEBUG_DETECTIONS = args.debug_detections
 
     # --- Load class names ---
-    if args.classes_file and os.path.isfile(args.classes_file):
-        with open(args.classes_file) as f:
-            CLASSES = tuple(line.strip() for line in f if line.strip())
-        coco_id_list = list(range(len(CLASSES)))
-        print(f'Loaded {len(CLASSES)} classes from {args.classes_file}')
-    else:
-        CLASSES = ("person", "bicycle", "car", "motorbike ", "aeroplane ", "bus ", "train", "truck ", "boat", "traffic light",
-                   "fire hydrant", "stop sign ", "parking meter", "bench", "bird", "cat", "dog ", "horse ", "sheep", "cow",
-                   "elephant", "bear", "zebra ", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-                   "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-                   "tennis racket", "bottle", "wine glass", "cup", "fork", "knife ", "spoon", "bowl", "banana", "apple",
-                   "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza ", "donut", "cake", "chair", "sofa",
-                   "pottedplant", "bed", "diningtable", "toilet ", "tvmonitor", "laptop\t", "mouse\t", "remote ", "keyboard ",
-                   "cell phone", "microwave ", "oven ", "toaster", "sink", "refrigerator ", "book", "clock", "vase",
-                   "scissors ", "teddy bear ", "hair drier", "toothbrush ")
-        coco_id_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28,
-                        31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-                        56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84,
-                        85, 86, 87, 88, 89, 90]
-        print('No --classes_file provided; using default COCO 80-class list')
+    CLASSES, classes_source = resolve_runtime_classes(args.classes_file)
+    coco_id_list = list(range(len(CLASSES)))
+    print(f'Loaded {len(CLASSES)} classes from {classes_source}')
 
     # --- Init model ---
     model, platform = setup_model(args)

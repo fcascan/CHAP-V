@@ -20,6 +20,7 @@ sys.path.insert(0, ROCKCHIP_DIR)
 from src.core.config import (
     BENCHMARK_MODE,
     MODEL_PATH,
+    MODEL_LABELS_FILE_PATH,
     VIDEO_FILE_PATH,
     ROCKCHIP_TARGET,
     OBJ_THRESHOLD,
@@ -30,16 +31,15 @@ from src.core.system_setup import setup_system, setup_web_system
 
 
 def resolve_default_classes_file():
-    """Return the preferred classes file for the main launcher."""
-    root_classes = os.path.join(PROJECT_ROOT, 'classes.txt')
-    if os.path.isfile(root_classes):
-        return root_classes
+    """Return resolved classes file path or None to use config default_labels fallback."""
+    if MODEL_LABELS_FILE_PATH and os.path.isfile(MODEL_LABELS_FILE_PATH):
+        return MODEL_LABELS_FILE_PATH
 
-    fallback_classes = os.path.join(PROJECT_ROOT, 'assets', 'models', 'april22_2.txt')
-    if os.path.isfile(fallback_classes):
-        return fallback_classes
+    yolo11n_fallback = os.path.join(PROJECT_ROOT, 'yolo11n.txt')
+    if os.path.isfile(yolo11n_fallback):
+        return yolo11n_fallback
 
-    return root_classes
+    return None
 
 
 def resolve_default_video_source():
@@ -82,11 +82,13 @@ def build_yolo11_argv(args):
         '--model_path', args.model_path,
         '--target', args.target,
         '--video_source', args.video_source,
-        '--classes_file', args.classes_file,
         '--obj_thresh', str(args.obj_thresh),
         '--nms_thresh', str(args.nms_thresh),
         '--img_size', str(args.img_size),
     ]
+
+    if args.classes_file:
+        argv.extend(['--classes_file', args.classes_file])
 
     if args.img_show:
         argv.append('--img_show')
@@ -126,7 +128,7 @@ def main():
     default_video_source = VIDEO_FILE_PATH if BENCHMARK_MODE else resolve_default_video_source()
     parser.add_argument('--model_path', default=MODEL_PATH, help='Path to the RKNN model file')
     parser.add_argument('--video_source', default=default_video_source, help='Video file path or camera index')
-    parser.add_argument('--classes_file', default=resolve_default_classes_file(), help='Path to the classes text file')
+    parser.add_argument('--classes_file', default=resolve_default_classes_file(), help='Path to classes file; if missing uses config model_labels/yolo11n/default_labels fallback')
     parser.add_argument('--target', default=ROCKCHIP_TARGET, help='Rockchip target, for example rk3588')
     parser.add_argument('--obj_thresh', type=float, default=OBJ_THRESHOLD, help='Object confidence threshold')
     parser.add_argument('--nms_thresh', type=float, default=NMS_THRESHOLD, help='NMS IoU threshold')
@@ -148,7 +150,10 @@ def main():
         print('[MAIN] Launching Rockchip YOLO11 inference flow')
         print(f'[MAIN] Model: {args.model_path}')
         print(f'[MAIN] Video source: {args.video_source}')
-        print(f'[MAIN] Classes file: {args.classes_file}')
+        if args.classes_file:
+            print(f'[MAIN] Classes file: {args.classes_file}')
+        else:
+            print('[MAIN] Classes source: config.ini default_labels fallback')
         run_rockchip_yolo11_launcher(args)
 
 if __name__ == "__main__":
