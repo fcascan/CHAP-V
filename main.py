@@ -6,7 +6,9 @@ import argparse
 from src.core.config import (
     BENCHMARK_MODE,
     IMG_SIZE,
+    INFERENCE_DEVICE,
     MODEL_PATH,
+    ONNX_MODEL_PATH,
     NMS_THRESHOLD,
     OBJ_THRESHOLD,
     ROCKCHIP_TARGET,
@@ -29,7 +31,10 @@ def build_parser():
     parser.add_argument("--http-logging", action="store_true", help="Enable HTTP request logging")
 
     default_video_source = VIDEO_FILE_PATH if BENCHMARK_MODE else resolve_default_video_source()
-    parser.add_argument("--model_path", default=MODEL_PATH, help="Path to the RKNN model file")
+    default_model_path = ONNX_MODEL_PATH if INFERENCE_DEVICE in {"CPU", "GPU"} else MODEL_PATH
+    if not default_model_path or not default_model_path.endswith((".onnx", ".rknn", ".pt", ".torchscript")):
+        default_model_path = MODEL_PATH
+    parser.add_argument("--model_path", default=default_model_path, help="Path to the model file")
     parser.add_argument("--video_source", default=default_video_source, help="Video file path or camera index")
     parser.add_argument(
         "--classes_file",
@@ -57,6 +62,7 @@ def main():
         return
 
     print("[MAIN] Launching console mode")
+    print(f"[MAIN] Inference device: {INFERENCE_DEVICE}")
     print(f"[MAIN] Model: {args.model_path}")
     print(f"[MAIN] Video source: {args.video_source}")
     if args.classes_file:
