@@ -6,16 +6,12 @@ by fcascan 2025
 import os
 import sys
 import time
-import queue
 import threading
-import json
 import configparser
 import logging
-import base64
 import subprocess
 import socket
 import psutil
-from io import StringIO
 
 # Computer vision and numerical libraries
 import cv2
@@ -25,8 +21,6 @@ import numpy as np
 from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit
 
-# Import project modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.config import *
 
 class WebServer:
@@ -515,6 +509,7 @@ class WebServer:
         
     def _run_processing(self):
         """Run YOLO11 processing with web integration"""
+        logger = logging.getLogger(__name__)
         try:
             from src.core.system_setup import setup_system, setup_inference_device, disable_unnecessary_logging
             from .web_video_processing import process_video_web
@@ -596,9 +591,6 @@ class WebServer:
         
     def run(self, debug=False):
         """Start the web server"""
-        import subprocess
-        import socket
-        
         # Get local IP address with multiple methods
         local_ip = '127.0.0.1'
         try:
@@ -628,7 +620,6 @@ class WebServer:
             # Configure HTTP request logging
             if not self.http_logging:
                 # Disable Werkzeug request logging
-                import logging
                 log = logging.getLogger('werkzeug')
                 log.setLevel(logging.ERROR)
                 

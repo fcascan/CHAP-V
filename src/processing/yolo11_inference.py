@@ -10,8 +10,8 @@ import logging
 from types import SimpleNamespace
 
 from ..core import config as app_config
-from rockchip import yolo11_infer as rockchip_yolo
-from rockchip.coco_utils import COCO_test_helper
+from src.rockchip import yolo11_infer as rockchip_yolo
+from src.rockchip.coco_utils import COCO_test_helper
 
 
 def _sync_rockchip_runtime_config():
