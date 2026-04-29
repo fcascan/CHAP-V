@@ -9,10 +9,39 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 config_ini = os.path.join(BASE_DIR, "config.ini")
 parser = configparser.ConfigParser()
 
+def _parse_color(value, fallback):
+    """Parse a BGR color from either 'B,G,R' or '#RRGGBB' notation."""
+    if value is None:
+        return fallback
+
+    if isinstance(value, (tuple, list)) and len(value) == 3:
+        return tuple(int(max(0, min(255, component))) for component in value)
+
+    text = str(value).strip()
+    if not text:
+        return fallback
+
+    try:
+        if text.startswith('#') and len(text) == 7:
+            red = int(text[1:3], 16)
+            green = int(text[3:5], 16)
+            blue = int(text[5:7], 16)
+            return (blue, green, red)
+
+        parts = [int(part.strip()) for part in text.split(',')]
+        if len(parts) == 3:
+            return tuple(max(0, min(255, part)) for part in parts)
+    except Exception:
+        pass
+
+    return fallback
+
+
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
+    global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     
     # Clear and re-read the config file
     if is_reload:
@@ -45,6 +74,15 @@ def load_config(is_reload=False):
     FPS_TEXT_SIZE = parser.getfloat("IMAGE", "fps_text_size", fallback=0.5)
     LABEL_TEXT_SIZE = parser.getfloat("IMAGE", "label_text_size", fallback=0.4)
     OVERLAY_ENABLED = parser.getboolean("IMAGE", "show_overlay", fallback=True)
+    OVERLAY_TEXT_COLOR = _parse_color(parser.get("IMAGE", "overlay_text_color", fallback="255,255,255"), (255, 255, 255))
+
+    # Load detection styling settings
+    DETECTION_BOX_COLOR = _parse_color(parser.get("DETECTION", "box_color", fallback="0,0,255"), (0, 0, 255))
+    DETECTION_LABEL_COLOR = _parse_color(parser.get("DETECTION", "label_text_color", fallback="255,255,255"), (255, 255, 255))
+    DETECTION_LABEL_BACKGROUND_COLOR = _parse_color(parser.get("DETECTION", "label_background_color", fallback="0,0,255"), (0, 0, 255))
+    DETECTION_BOX_THICKNESS = parser.getint("DETECTION", "box_thickness", fallback=2)
+    DETECTION_LABEL_TEXT_SIZE = parser.getfloat("DETECTION", "label_text_size", fallback=0.45)
+    DETECTION_LABEL_TEXT_THICKNESS = parser.getint("DETECTION", "label_text_thickness", fallback=2)
     
     # Load camera settings
     MAX_CAMERAS_TO_SCAN = parser.getint("CAMERA", "max_cameras_to_scan", fallback=6)
@@ -114,6 +152,9 @@ def load_config(is_reload=False):
         f"  obj_threshold = {OBJ_THRESHOLD}\n"
         f"  nms_threshold = {NMS_THRESHOLD}\n"
         f"  overlay = {'ON' if OVERLAY_ENABLED else 'OFF'}\n"
+        f"  detection_box_thickness = {DETECTION_BOX_THICKNESS}\n"
+        f"  detection_label_text_size = {DETECTION_LABEL_TEXT_SIZE}\n"
+        f"  detection_label_text_thickness = {DETECTION_LABEL_TEXT_THICKNESS}\n"
         f"  debug = {debug_status}\n"
         f"  max_cameras = {MAX_CAMERAS_TO_SCAN}"
     )
@@ -126,7 +167,13 @@ def load_config(is_reload=False):
         'overlay_enabled': OVERLAY_ENABLED,
         'max_cameras': MAX_CAMERAS_TO_SCAN,
         'img_size': IMG_SIZE,
-        'classes': CLASSES
+        'classes': CLASSES,
+        'detection_box_color': DETECTION_BOX_COLOR,
+        'detection_label_color': DETECTION_LABEL_COLOR,
+        'detection_label_background_color': DETECTION_LABEL_BACKGROUND_COLOR,
+        'detection_box_thickness': DETECTION_BOX_THICKNESS,
+        'detection_label_text_size': DETECTION_LABEL_TEXT_SIZE,
+        'detection_label_text_thickness': DETECTION_LABEL_TEXT_THICKNESS
     }
 
 def reload_config():

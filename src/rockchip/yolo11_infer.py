@@ -256,9 +256,31 @@ def draw(image, boxes, scores, classes):
             class_name = f'class_{class_id}'
 
         print('%s @ (%d %d %d %d) %.3f' % (class_name, top, left, right, bottom, score))
-        cv2.rectangle(image, (top, left), (right, bottom), (255, 0, 0), 2)
-        cv2.putText(image, '{0} {1:.2f}'.format(class_name, score),
-                    (top, left - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+        box_color = tuple(int(c) for c in app_config.DETECTION_BOX_COLOR)
+        label_text_color = tuple(int(c) for c in app_config.DETECTION_LABEL_COLOR)
+        label_bg_color = tuple(int(c) for c in app_config.DETECTION_LABEL_BACKGROUND_COLOR)
+        box_thickness = max(1, int(app_config.DETECTION_BOX_THICKNESS))
+        label_scale = float(app_config.DETECTION_LABEL_TEXT_SIZE)
+        label_thickness = max(1, int(app_config.DETECTION_LABEL_TEXT_THICKNESS))
+
+        cv2.rectangle(image, (top, left), (right, bottom), box_color, box_thickness)
+
+        label = '{0} {1:.2f}'.format(class_name, score)
+        (label_width, label_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, label_scale, label_thickness)
+        label_top = max(0, left - label_height - baseline - 6)
+        label_left = top
+        label_right = top + label_width + 6
+        label_bottom = label_top + label_height + baseline + 6
+
+        if label_top <= 0:
+            label_top = min(image.shape[0] - (label_height + baseline + 6), bottom + 6)
+            label_bottom = label_top + label_height + baseline + 6
+
+        cv2.rectangle(image, (label_left, label_top), (label_right, label_bottom), label_bg_color, thickness=-1)
+        cv2.putText(image, label,
+                    (label_left + 3, label_bottom - baseline - 3),
+                    cv2.FONT_HERSHEY_SIMPLEX, label_scale, label_text_color, label_thickness)
 
 
 def preprocess_frame(frame, platform):
@@ -424,6 +446,7 @@ if __name__ == '__main__':
                 inference_time_ms=avg_inf_time_ms,
                 fps_value=fps_actual,
                 text_size=0.5,
+                text_color=app_config.OVERLAY_TEXT_COLOR,
             )
 
             if writer is not None:

@@ -178,6 +178,7 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
                 inference_time_ms=avg_inf_time_ms,
                 fps_value=display_fps,
                 text_size=FPS_TEXT_SIZE,
+                text_color=OVERLAY_TEXT_COLOR,
             )
             
             # Draw detections using YOLO11

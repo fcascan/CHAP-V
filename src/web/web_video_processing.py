@@ -292,6 +292,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
             inference_time_ms=avg_inf_time_ms,
             fps_value=fps_actual,
             text_size=current_fps_text_size,
+            text_color=config.OVERLAY_TEXT_COLOR,
         )
         
         # Update web video stream
