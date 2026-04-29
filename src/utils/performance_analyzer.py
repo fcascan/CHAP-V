@@ -12,6 +12,7 @@ import argparse
 import glob
 import csv
 import statistics
+import io
 from datetime import datetime
 
 # Try to import PIL for graph generation
@@ -39,6 +40,35 @@ def percentile(data, p):
     index = int(len(sorted_data) * p / 100)
     return sorted_data[min(index, len(sorted_data) - 1)]
 
+def draw_dashed_line(draw, start, end, fill, dash_length=5):
+    """Draw a dashed line using PIL"""
+    x1, y1 = start
+    x2, y2 = end
+    
+    dx = x2 - x1
+    dy = y2 - y1
+    distance = (dx**2 + dy**2)**0.5
+    
+    if distance == 0:
+        return
+    
+    steps = int(distance / dash_length)
+    for i in range(0, steps, 2):
+        start_x = x1 + (dx / steps) * i * dash_length / dash_length
+        start_y = y1 + (dy / steps) * i * dash_length / dash_length
+        end_x = x1 + (dx / steps) * min(i + 1, steps) * dash_length / dash_length
+        end_y = y1 + (dy / steps) * min(i + 1, steps) * dash_length / dash_length
+        draw.line([start_x, start_y, end_x, end_y], fill=fill, width=2)
+
+def calculate_time_axis_intervals(total_points):
+    """Calculate appropriate time axis intervals based on total duration"""
+    if total_points < 60:  # Less than 60 points (1 second per point at 60fps ≈ 1 second)
+        return 1, "1s"  # Every 1 second
+    elif total_points < 3600:  # Less than 60 minutes
+        return max(1, total_points // 60), "1min"  # Every 1 minute
+    else:  # More than 60 minutes
+        return max(1, total_points // 60), "1hr"  # Every 1 hour equivalent
+
 def generate_performance_graphs(csv_filepath, output_path=None):
     """
     Generate performance analysis graphs as PNG file using PIL.
@@ -62,9 +92,35 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         
         # Read CSV data
         data = {}
+        metadata = {}
         with open(csv_filepath, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
+            # Try to read metadata from comments at the top
+            first_line = f.readline().strip()
+            if first_line.startswith('#'):
+                # Parse metadata lines
+                while first_line.startswith('#'):
+                    # Extract key=value pairs from comments
+                    comment_content = first_line[1:].strip()
+                    if '=' in comment_content:
+                        key, value = comment_content.split('=', 1)
+                        metadata[key.strip()] = value.strip()
+                    first_line = f.readline().strip()
+                # Reset to read as DictReader
+                f.seek(0)
+                # Skip metadata lines
+                while True:
+                    line = f.readline().strip()
+                    if not line.startswith('#'):
+                        break
+                # Create reader from current position
+                remaining = line + '\n' + f.read()
+                reader = csv.DictReader(io.StringIO(remaining))
+            else:
+                f.seek(0)
+                reader = csv.DictReader(f)
+            
             headers = reader.fieldnames
+            print(f"[INFO] CSV headers detected: {headers}")
             
             # Initialize data lists
             for header in headers:
@@ -81,12 +137,21 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                     except ValueError:
                         data[header].append(0.0)
         
+        # Sanity check: required columns must be present
+        required_cols = ['inference_time_ms', 'fps_actual', 'npu_core0_percent', 'cpu_usage_percent', 'frame_number']
+        missing_cols = [c for c in required_cols if c not in data]
+        if missing_cols:
+            print(f"[ERROR] Missing columns in CSV: {missing_cols}. Available columns: {list(data.keys())}")
+            return None
+
         if not data or len(data.get('frame_number', [])) == 0:
             print(f"No valid data found in {csv_filepath}")
             return None
 
-        # Create image
-        img_width, img_height = 1400, 1000
+        # Create image with more space for new graphs and labels
+        img_width = 1400
+        # Make the image height follow A4 aspect ratio (210x297 mm) based on width
+        img_height = int(img_width * 297 / 210)
         img = Image.new('RGB', (img_width, img_height), 'white')
         draw = ImageDraw.Draw(img)
         
@@ -117,11 +182,32 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         title = f"Performance Analysis Report"
         subtitle = f"Source: {os.path.basename(csv_filepath)}"
         draw.text((20, 20), title, fill='black', font=font_large)
-        draw.text((20, 50), subtitle, fill='gray', font=font)
-        draw.text((20, 75), f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}", fill='gray', font=small_font)
+        draw.text((20, 50), subtitle, fill='black', font=font)
+        draw.text((20, 75), f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}", fill='black', font=small_font)
+        
+        # Metadata lines
+        y_meta = 95
+        if 'model_path' in metadata:
+            model_text = f"Model: {os.path.basename(metadata['model_path'])}"
+            draw.text((20, y_meta), model_text, fill='black', font=small_font)
+            y_meta += 18
+        
+        if 'benchmark_video' in metadata:
+            video_text = f"Video: {os.path.basename(metadata['benchmark_video'])}"
+            draw.text((20, y_meta), video_text, fill='black', font=small_font)
+            y_meta += 18
+        elif 'camera_index' in metadata:
+            camera_text = f"Camera: {metadata['camera_index']}"
+            draw.text((20, y_meta), camera_text, fill='navy', font=small_font)
+            y_meta += 18
+        
+        if 'inference_device' in metadata:
+            device_text = f"Device: {metadata['inference_device']}"
+            draw.text((20, y_meta), device_text, fill='black', font=small_font)
+            y_meta += 18
         
         # Statistics summary
-        y_pos = 110
+        y_pos = y_meta + 10
         stats_text = [
             f"SUMMARY STATISTICS",
             f"  • Total frames analyzed: {len(inference_times)}",
@@ -142,8 +228,12 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                 draw.text((20, y_pos), text, fill='black', font=small_font)
             y_pos += 25
         
-        # Graph 1: Inference Time Timeline
-        graph_y = 380
+        # Calculate time axis intervals
+        total_points = len(inference_times)
+        interval_step, interval_label = calculate_time_axis_intervals(total_points)
+
+        # Graph 1: Inference Time Timeline (placed after summary with padding)
+        graph_y = y_pos + 40
         graph_width = 650
         graph_height = 180
         
@@ -161,12 +251,80 @@ def generate_performance_graphs(csv_filepath, output_path=None):
             step = len(inference_times) // sample_size if sample_size > 0 else 1
             sampled_data = inference_times[::step][:sample_size]
             
-            # Draw grid lines
+            # Draw grid lines with time intervals
             for i in range(5):
                 y_grid = graph_y + (i * graph_height // 4)
                 draw.line([20, y_grid, 20 + graph_width, y_grid], fill='lightgray', width=1)
                 val = max_val - (i * val_range / 4)
                 draw.text((25, y_grid - 8), f"{val:.1f}", fill='gray', font=small_font)
+            
+            # Parse timestamps once and prepare sampled indices for time axis labels
+            timestamps_raw = data.get('timestamp', [])
+            parsed_ts = []
+            first_ts = None
+            last_ts = None
+            if timestamps_raw:
+                for t in timestamps_raw:
+                    try:
+                        parsed = datetime.strptime(t, "%Y-%m-%d %H:%M:%S.%f")
+                    except Exception:
+                        try:
+                            parsed = datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            parsed = None
+                    parsed_ts.append(parsed)
+                # find first and last valid timestamps
+                for p in parsed_ts:
+                    if p is not None:
+                        first_ts = p
+                        break
+                for p in reversed(parsed_ts):
+                    if p is not None:
+                        last_ts = p
+                        break
+
+            # Choose label unit based on actual duration
+            total_seconds = None
+            unit = 's'
+            factor = 1
+            if first_ts and last_ts and last_ts > first_ts:
+                total_seconds = (last_ts - first_ts).total_seconds()
+                if total_seconds < 60:
+                    unit = 's'; factor = 1
+                elif total_seconds < 3600:
+                    unit = 'm'; factor = 60
+                else:
+                    unit = 'h'; factor = 3600
+
+            sampled_count = len(sampled_data)
+            sample_indices = [min(i * step, len(inference_times) - 1) for i in range(sampled_count)]
+            # Show about 8 labels max, skip the first (zero) label
+            label_interval = max(1, sampled_count // 8) if sampled_count > 0 else 1
+            for idx_i in range(0, sampled_count, label_interval):
+                # skip first label (zero)
+                if idx_i == 0:
+                    continue
+                idx = sample_indices[idx_i]
+                x_pos = 20 + (idx_i * graph_width // sampled_count)
+                draw.line([x_pos, graph_y + graph_height, x_pos, graph_y + graph_height + 5], fill='black', width=1)
+                # compute label from timestamps if available
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    # fallback to seconds using frame index (assuming ~30fps)
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 15, graph_y + graph_height + 8), label, fill='gray', font=small_font)
             
             if len(sampled_data) > 1:
                 for i in range(len(sampled_data) - 1):
@@ -176,12 +334,14 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                     y2 = graph_y + graph_height - int((sampled_data[i + 1] - min_val) / val_range * graph_height)
                     draw.line([x1, y1, x2, y2], fill='blue', width=2)
                 
-                # Draw mean line
+                # Draw mean line (moved text below graph)
                 mean_y = graph_y + graph_height - int((inf_mean - min_val) / val_range * graph_height)
                 draw.line([20, mean_y, 20 + graph_width, mean_y], fill='red', width=2)
-                draw.text((25, mean_y - 15), f"Mean: {inf_mean:.1f}ms", fill='red', font=small_font)
         
-        # Graph 2: FPS Timeline
+        # Add text label below Inference Time graph
+        draw.text((25, graph_y + graph_height + 20), f"Mean: {inf_mean:.1f}ms", fill='red', font=small_font)
+        
+        # Graph 2: FPS Timeline with improved scaling
         graph2_x = 720
         draw.rectangle([graph2_x, graph_y, graph2_x + graph_width, graph_y + graph_height], outline='black', width=2)
         draw.text((graph2_x, graph_y - 25), "FPS Over Time", fill='black', font=font)
@@ -189,7 +349,11 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         if len(fps_data) > 0:
             max_fps = max(fps_data)
             min_fps = min(fps_data) 
-            fps_range = max_fps - min_fps if max_fps != min_fps else 1
+            
+            # Center on average, with bounds
+            fps_lower_bound = max(0, min_fps - 10)
+            fps_upper_bound = max_fps + 10
+            fps_range = fps_upper_bound - fps_lower_bound if fps_upper_bound != fps_lower_bound else 1
             
             sampled_fps = fps_data[::step][:sample_size]
             
@@ -197,28 +361,181 @@ def generate_performance_graphs(csv_filepath, output_path=None):
             for i in range(5):
                 y_grid = graph_y + (i * graph_height // 4)
                 draw.line([graph2_x, y_grid, graph2_x + graph_width, y_grid], fill='lightgray', width=1)
-                val = max_fps - (i * fps_range / 4)
+                val = fps_upper_bound - (i * fps_range / 4)
                 draw.text((graph2_x + 5, y_grid - 8), f"{val:.1f}", fill='gray', font=small_font)
+            
+            # Draw time axis labels using parsed timestamps when available (skip zero)
+            sampled_count_fps = len(sampled_fps)
+            sample_indices_fps = [min(i * step, len(fps_data) - 1) for i in range(sampled_count_fps)]
+            label_interval_fps = max(1, sampled_count_fps // 8) if sampled_count_fps > 0 else 1
+            for idx_i in range(0, sampled_count_fps, label_interval_fps):
+                # skip first label (zero)
+                if idx_i == 0:
+                    continue
+                idx = sample_indices_fps[idx_i]
+                x_pos = graph2_x + (idx_i * graph_width // sampled_count_fps)
+                draw.line([x_pos, graph_y + graph_height, x_pos, graph_y + graph_height + 5], fill='black', width=1)
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 15, graph_y + graph_height + 8), label, fill='gray', font=small_font)
             
             if len(sampled_fps) > 1:
                 for i in range(len(sampled_fps) - 1):
                     x1 = graph2_x + (i * graph_width // len(sampled_fps))
-                    y1 = graph_y + graph_height - int((sampled_fps[i] - min_fps) / fps_range * graph_height)
+                    y1 = graph_y + graph_height - int((sampled_fps[i] - fps_lower_bound) / fps_range * graph_height)
                     x2 = graph2_x + ((i + 1) * graph_width // len(sampled_fps))
-                    y2 = graph_y + graph_height - int((sampled_fps[i + 1] - min_fps) / fps_range * graph_height)
+                    y2 = graph_y + graph_height - int((sampled_fps[i + 1] - fps_lower_bound) / fps_range * graph_height)
                     draw.line([x1, y1, x2, y2], fill='green', width=2)
                 
-                # Draw mean line
-                mean_y = graph_y + graph_height - int((fps_mean - min_fps) / fps_range * graph_height)
-                draw.line([graph2_x, mean_y, graph2_x + graph_width, mean_y], fill='red', width=2)
-                draw.text((graph2_x + 5, mean_y - 15), f"Mean: {fps_mean:.1f} FPS", fill='red', font=small_font)
+                # Draw mean line (dashed, green, and moved text below graph)
+                mean_y = graph_y + graph_height - int((fps_mean - fps_lower_bound) / fps_range * graph_height)
+                draw_dashed_line(draw, (graph2_x, mean_y), (graph2_x + graph_width, mean_y), fill='green')
         
-        # Graph 3: NPU vs CPU Usage
-        graph3_y = 600
+        # Add text label below FPS graph
+        draw.text((graph2_x + 5, graph_y + graph_height + 20), f"Mean: {fps_mean:.1f} FPS", fill='green', font=small_font)
+        
+        # spacing between rows (increased for clearer separation)
+        graph_row_sep = 100
+
+        # Graph 4: Individual NPU Usage (second row, left)
+        graph4_y = graph_y + graph_height + graph_row_sep
+        graph4_x = 20
+        graph4_width = (img_width - 60) // 2  # two columns with 20px margins and 20px gap
+        graph4_height = 140
+        draw.rectangle([graph4_x, graph4_y, graph4_x + graph4_width, graph4_y + graph4_height], outline='black', width=2)
+        draw.text((graph4_x, graph4_y - 25), "NPU Usage (%)", fill='black', font=font)
+        
+        if len(npu_core0) > 0:
+            sampled_npu = npu_core0[::step][:sample_size]
+            
+            # Draw grid lines
+            for i in range(5):
+                y_grid = graph4_y + (i * graph4_height // 4)
+                draw.line([graph4_x, y_grid, graph4_x + graph4_width, y_grid], fill='lightgray', width=1)
+                val = 100 - (i * 25)
+                draw.text((graph4_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
+            
+            # Draw time axis labels for NPU individual
+            sampled_count_npu = len(sampled_npu)
+            sample_indices_npu = [min(i * step, len(npu_core0) - 1) for i in range(sampled_count_npu)]
+            label_interval_npu = max(1, sampled_count_npu // 8) if sampled_count_npu > 0 else 1
+            for idx_i in range(0, sampled_count_npu, label_interval_npu):
+                if idx_i == 0:
+                    continue
+                idx = sample_indices_npu[idx_i]
+                x_pos = graph4_x + (idx_i * graph4_width // sampled_count_npu)
+                draw.line([x_pos, graph4_y + graph4_height, x_pos, graph4_y + graph4_height + 5], fill='black', width=1)
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 12, graph4_y + graph4_height + 8), label, fill='gray', font=small_font)
+            
+            if len(sampled_npu) > 1:
+                # NPU line
+                for i in range(len(sampled_npu) - 1):
+                    x1 = graph4_x + (i * graph4_width // len(sampled_npu))
+                    y1 = graph4_y + graph4_height - int(sampled_npu[i] * graph4_height / 100)
+                    x2 = graph4_x + ((i + 1) * graph4_width // len(sampled_npu))
+                    y2 = graph4_y + graph4_height - int(sampled_npu[i + 1] * graph4_height / 100)
+                    draw.line([x1, y1, x2, y2], fill='orange', width=2)
+                
+                # Draw dashed average line
+                npu_avg_y = graph4_y + graph4_height - int(npu_mean * graph4_height / 100)
+                draw_dashed_line(draw, (graph4_x, npu_avg_y), (graph4_x + graph4_width, npu_avg_y), fill='darkorange')
+        
+        # Graph 5: Individual CPU Usage (second row, right)
+        graph5_y = graph4_y
+        graph5_x = graph4_x + graph4_width + 20
+        graph5_width = graph4_width
+        graph5_height = 140
+        draw.rectangle([graph5_x, graph5_y, graph5_x + graph5_width, graph5_y + graph5_height], outline='black', width=2)
+        draw.text((graph5_x, graph5_y - 25), "CPU Usage (%)", fill='black', font=font)
+        
+        if len(cpu_usage) > 0:
+            sampled_cpu = cpu_usage[::step][:sample_size]
+            
+            # Draw grid lines
+            for i in range(5):
+                y_grid = graph5_y + (i * graph5_height // 4)
+                draw.line([graph5_x, y_grid, graph5_x + graph5_width, y_grid], fill='lightgray', width=1)
+                val = 100 - (i * 25)
+                draw.text((graph5_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
+            
+            # Draw time axis labels for CPU individual
+            sampled_count_cpu = len(sampled_cpu)
+            sample_indices_cpu = [min(i * step, len(cpu_usage) - 1) for i in range(sampled_count_cpu)]
+            label_interval_cpu = max(1, sampled_count_cpu // 8) if sampled_count_cpu > 0 else 1
+            for idx_i in range(0, sampled_count_cpu, label_interval_cpu):
+                if idx_i == 0:
+                    continue
+                idx = sample_indices_cpu[idx_i]
+                x_pos = graph5_x + (idx_i * graph5_width // sampled_count_cpu)
+                draw.line([x_pos, graph5_y + graph5_height, x_pos, graph5_y + graph5_height + 5], fill='black', width=1)
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 12, graph5_y + graph5_height + 8), label, fill='gray', font=small_font)
+            
+            if len(sampled_cpu) > 1:
+                # CPU line
+                for i in range(len(sampled_cpu) - 1):
+                    x1 = graph5_x + (i * graph5_width // len(sampled_cpu))
+                    y1 = graph5_y + graph5_height - int(sampled_cpu[i] * graph5_height / 100)
+                    x2 = graph5_x + ((i + 1) * graph5_width // len(sampled_cpu))
+                    y2 = graph5_y + graph5_height - int(sampled_cpu[i + 1] * graph5_height / 100)
+                    draw.line([x1, y1, x2, y2], fill='purple', width=2)
+                
+                # Draw dashed average line
+                cpu_avg_y = graph5_y + graph5_height - int(cpu_mean * graph5_height / 100)
+                draw_dashed_line(draw, (graph5_x, cpu_avg_y), (graph5_x + graph5_width, cpu_avg_y), fill='darkviolet')
+        
+        # Add text labels below graphs for means
+        draw.text((graph4_x + 5, graph4_y + graph4_height + 30), f"Avg: {npu_mean:.1f}%", fill='darkorange', font=small_font)
+        draw.text((graph5_x + 5, graph5_y + graph5_height + 30), f"Avg: {cpu_mean:.1f}%", fill='darkviolet', font=small_font)
+        
+        # Graph 3: NPU vs CPU Usage with average lines (third row, full width)
+        graph3_y = graph4_y + graph4_height + graph_row_sep
         graph3_height = 150
         
         draw.rectangle([20, graph3_y, 20 + graph_width, graph3_y + graph3_height], outline='black', width=2)
-        draw.text((20, graph3_y - 25), "NPU vs CPU Usage (%)", fill='black', font=font)
+        draw.text((20, graph3_y - 25), "NPU vs CPU Usage Comparison (%)", fill='black', font=font)
         
         if len(npu_core0) > 0 and len(cpu_usage) > 0:
             sampled_npu = npu_core0[::step][:sample_size]
@@ -230,6 +547,33 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                 draw.line([20, y_grid, 20 + graph_width, y_grid], fill='lightgray', width=1)
                 val = 100 - (i * 25)
                 draw.text((25, y_grid - 8), f"{val}%", fill='gray', font=small_font)
+            
+            # Draw time axis labels for comparison graph
+            sampled_count_cmp = len(sampled_npu)
+            sample_indices_cmp = [min(i * step, len(npu_core0) - 1) for i in range(sampled_count_cmp)]
+            label_interval_cmp = max(1, sampled_count_cmp // 8) if sampled_count_cmp > 0 else 1
+            for idx_i in range(0, sampled_count_cmp, label_interval_cmp):
+                if idx_i == 0:
+                    continue
+                idx = sample_indices_cmp[idx_i]
+                x_pos = 20 + (idx_i * graph_width // sampled_count_cmp)
+                draw.line([x_pos, graph3_y + graph3_height, x_pos, graph3_y + graph3_height + 5], fill='black', width=1)
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 15, graph3_y + graph3_height + 8), label, fill='gray', font=small_font)
             
             if len(sampled_npu) > 1:
                 # NPU line
@@ -247,24 +591,51 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                     x2 = 20 + ((i + 1) * graph_width // len(sampled_cpu))
                     y2 = graph3_y + graph3_height - int(sampled_cpu[i + 1] * graph3_height / 100)
                     draw.line([x1, y1, x2, y2], fill='purple', width=2)
+                
+                # Draw dashed average lines (text moved below graph)
+                npu_avg_y = graph3_y + graph3_height - int(npu_mean * graph3_height / 100)
+                cpu_avg_y = graph3_y + graph3_height - int(cpu_mean * graph3_height / 100)
+                draw_dashed_line(draw, (20, npu_avg_y), (20 + graph_width, npu_avg_y), fill='darkorange')
+                draw_dashed_line(draw, (20, cpu_avg_y), (20 + graph_width, cpu_avg_y), fill='darkviolet')
         
-        # Legend
-        legend_x = 720
-        legend_y = 600
+        # Add text labels below NPU vs CPU graph
+        draw.text((25, graph3_y + graph3_height + 20), f"NPU Avg: {npu_mean:.1f}%", fill='darkorange', font=small_font)
+        draw.text((25, graph3_y + graph3_height + 40), f"CPU Avg: {cpu_mean:.1f}%", fill='darkviolet', font=small_font)
+        
+        # Legend (updated position and content)
+        legend_x = 20
+        legend_y = graph3_y + graph3_height + 90
         draw.text((legend_x, legend_y), "LEGEND:", fill='black', font=font)
-        draw.line([legend_x, legend_y + 30, legend_x + 30, legend_y + 30], fill='blue', width=3)
-        draw.text((legend_x + 40, legend_y + 25), "Inference Time", fill='black', font=small_font)
-        draw.line([legend_x, legend_y + 50, legend_x + 30, legend_y + 50], fill='green', width=3)
-        draw.text((legend_x + 40, legend_y + 45), "FPS", fill='black', font=small_font)
-        draw.line([legend_x, legend_y + 70, legend_x + 30, legend_y + 70], fill='orange', width=3)
-        draw.text((legend_x + 40, legend_y + 65), "NPU Usage", fill='black', font=small_font)
-        draw.line([legend_x, legend_y + 90, legend_x + 30, legend_y + 90], fill='purple', width=3)
-        draw.text((legend_x + 40, legend_y + 85), "CPU Usage", fill='black', font=small_font)
-        draw.line([legend_x, legend_y + 110, legend_x + 30, legend_y + 110], fill='red', width=3)
-        draw.text((legend_x + 40, legend_y + 105), "Mean Values", fill='black', font=small_font)
         
-        # Save image
-        img.save(output_path, 'PNG')
+        # Solid lines
+        draw.line([legend_x, legend_y + 30, legend_x + 30, legend_y + 30], fill='blue', width=3)
+        draw.text((legend_x + 40, legend_y + 25), "Inference Time (ms)", fill='black', font=small_font)
+        
+        draw.line([legend_x, legend_y + 50, legend_x + 30, legend_y + 50], fill='green', width=3)
+        draw.text((legend_x + 40, legend_y + 45), "FPS Over Time", fill='black', font=small_font)
+        
+        draw.line([legend_x, legend_y + 70, legend_x + 30, legend_y + 70], fill='orange', width=3)
+        draw.text((legend_x + 40, legend_y + 65), "NPU Usage (%)", fill='black', font=small_font)
+        
+        draw.line([legend_x, legend_y + 90, legend_x + 30, legend_y + 90], fill='purple', width=3)
+        draw.text((legend_x + 40, legend_y + 85), "CPU Usage (%)", fill='black', font=small_font)
+        
+        # Dashed lines
+        draw_dashed_line(draw, (legend_x, legend_y + 110), (legend_x + 30, legend_y + 110), fill='darkorange')
+        draw.text((legend_x + 40, legend_y + 105), "NPU Average", fill='black', font=small_font)
+        
+        draw_dashed_line(draw, (legend_x, legend_y + 130), (legend_x + 30, legend_y + 130), fill='darkviolet')
+        draw.text((legend_x + 40, legend_y + 125), "CPU Average", fill='black', font=small_font)
+        
+        draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='green')
+        draw.text((legend_x + 40, legend_y + 145), "FPS Average", fill='black', font=small_font)
+        
+        # Save image with higher DPI for better readability (keep pixel sizes unchanged)
+        try:
+            img.save(output_path, 'PNG', dpi=(300, 300))
+        except TypeError:
+            # PIL versions older may not accept dpi param for PNG; fallback
+            img.save(output_path, 'PNG')
         return output_path
         
     except Exception as e:

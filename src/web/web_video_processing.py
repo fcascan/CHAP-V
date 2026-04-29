@@ -102,6 +102,10 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     
     csv_file = open(csv_filepath, 'w', newline='', encoding='utf-8')
     csv_writer = csv.writer(csv_file)
+    # Write metadata as comments
+    csv_writer.writerow([f"#model_path={yolo_engine.model_path}"])
+    csv_writer.writerow([f"#benchmark_video={current_video_path}"])
+    csv_writer.writerow([f"#inference_device={current_device}"])
     csv_writer.writerow(csv_headers)
     
     # CSV line limitation
@@ -337,7 +341,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         
         # Use automatic CSV analysis instead of manual statistics
         logger.info("="*50)
-        from ..utils.my_htop import auto_analyze_latest_csv
+        from ..utils.csv_analysis import auto_analyze_latest_csv
         auto_analyze_latest_csv(current_device, logger, csv_filepath)
     else:
         logger.error("No frames were processed successfully.")
