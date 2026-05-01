@@ -58,18 +58,11 @@ class VideoStreamManager:
         if camera_id == 0:
             with self.frame_lock:
                 self.latest_frame = frame.copy()
-                
+
         # Update specific camera frame
         if camera_id in self.camera_locks:
             with self.camera_locks[camera_id]:
                 self.camera_frames[camera_id] = frame.copy()
-            
-        # Add to buffer for processing
-        try:
-            if not self.frame_buffer.full():
-                self.frame_buffer.put_nowait(frame.copy())
-        except:
-            pass  # Ignore if buffer is full
             
     def get_latest_frame(self, camera_id=None):
         """Get the latest frame for streaming

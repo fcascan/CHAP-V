@@ -57,7 +57,8 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
                 for i, (box, cls, score) in enumerate(zip(boxes, classes, scores)):
                     logging.debug(f"[DEBUG] Stream {idx} det {i+1}: {engine.get_class_name(cls)} ({score:.3f})")
 
-        cv2.imwrite(os.path.join(output_dir, f"inference_output_stream{idx}.jpg"), disp)
+        if SAVE_DEBUG_FRAMES:
+            cv2.imwrite(os.path.join(output_dir, f"inference_output_stream{idx}.jpg"), disp)
         video_manager.update_frame(disp, camera_id=idx)
         total_frames += 1
 

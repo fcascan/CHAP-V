@@ -82,7 +82,7 @@ class YOLO11InferenceEngine:
         # Inline preprocessing using this engine's own coco_helper so the letterbox
         # state is never shared across engines — required for thread-safe multi-engine use.
         img = self.coco_helper.letter_box(
-            im=frame.copy(),
+            im=frame,
             new_shape=(app_config.IMG_SIZE[1], app_config.IMG_SIZE[0]),
             pad_color=(0, 0, 0),
         )

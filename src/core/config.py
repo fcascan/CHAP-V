@@ -40,7 +40,7 @@ def _parse_color(value, fallback):
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     
     # Clear and re-read the config file
@@ -72,6 +72,7 @@ def load_config(is_reload=False):
     LABEL_TEXT_SIZE = parser.getfloat("IMAGE", "label_text_size", fallback=0.4)
     OVERLAY_ENABLED = parser.getboolean("IMAGE", "show_overlay", fallback=True)
     OVERLAY_TEXT_COLOR = _parse_color(parser.get("IMAGE", "overlay_text_color", fallback="255,255,255"), (255, 255, 255))
+    SAVE_DEBUG_FRAMES = parser.getboolean("IMAGE", "save_debug_frames", fallback=False)
 
     # Load detection styling settings
     DETECTION_BOX_COLOR = _parse_color(parser.get("DETECTION", "box_color", fallback="0,0,255"), (0, 0, 255))

@@ -38,7 +38,7 @@ def build_parser():
 
           [INFERENCE]
             inference_device       NPU | GPU | CPU
-            rockchip_target        rk3588 | rk3566 | rk3562 | rk3576
+            rockchip_target        rk3562 | rk3566 | rk3568 | rk3576 | rk3588 | rv1126b | rv1109 | rv1126 | rk1808
             max_inference_instances  number of parallel streams (1..3)
             npu_core_assignment    auto (all on Core 0) | distributed (stream N -> Core N)
             obj_threshold          detection confidence threshold
@@ -110,7 +110,7 @@ def build_parser():
                                help="Path to a plain-text class labels file "
                                     "(one label per line); falls back to config.ini default_labels")
     console_group.add_argument("--target", default=ROCKCHIP_TARGET,
-                               help="Rockchip SoC target — rk3588 | rk3566 | rk3562 | rk3576 "
+                               help="Rockchip SoC target — rk3562, rk3566, rk3568, rk3576, rk3588, rv1126b, rv1109, rv1126, rk1808 "
                                     f"(config.ini: {ROCKCHIP_TARGET})")
     console_group.add_argument("--obj_thresh", type=float, default=OBJ_THRESHOLD,
                                help=f"Detection confidence threshold (config.ini: {OBJ_THRESHOLD})")

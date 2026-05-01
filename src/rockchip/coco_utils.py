@@ -6,6 +6,11 @@
 # Modified from original:
 #   - coco_eval_with_json() commented out (requires pycocotools, only needed for
 #     COCO mAP benchmarking; uncomment if you need mAP evaluation)
+#   - letter_box() and direct_resize(): replaced list.append() with direct assignment
+#     so letter_box_info_list stays at size 1 — prevents unbounded memory growth in
+#     long-running inference sessions (only [-1] is ever accessed)
+#   - get_real_box(): cached letter_box_info_list[-1] into a local variable to avoid
+#     8 repeated list lookups per call
 # =============================================================================
 
 from copy import copy
@@ -74,7 +79,7 @@ class COCO_test_helper():
         im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=pad_color)
 
         if self.enable_ltter_box is True:
-            self.letter_box_info_list.append(Letter_Box_Info(shape, new_shape, ratio, ratio, dw, dh, pad_color))
+            self.letter_box_info_list = [Letter_Box_Info(shape, new_shape, ratio, ratio, dw, dh, pad_color)]
         if info_need is True:
             return im, ratio, (dw, dh)
         else:
@@ -85,7 +90,7 @@ class COCO_test_helper():
         h_ratio = new_shape[0] / shape[0]
         w_ratio = new_shape[1] / shape[1]
         if self.enable_ltter_box is True:
-            self.letter_box_info_list.append(Letter_Box_Info(shape, new_shape, w_ratio, h_ratio, 0, 0, (0, 0, 0)))
+            self.letter_box_info_list = [Letter_Box_Info(shape, new_shape, w_ratio, h_ratio, 0, 0, (0, 0, 0))]
         im = cv2.resize(im, (new_shape[1], new_shape[0]))
         return im
 
@@ -93,21 +98,22 @@ class COCO_test_helper():
         bbox = copy(box)
         if self.enable_ltter_box is True:
             if in_format == 'xyxy':
-                bbox[:, 0] -= self.letter_box_info_list[-1].dw
-                bbox[:, 0] /= self.letter_box_info_list[-1].w_ratio
-                bbox[:, 0] = np.clip(bbox[:, 0], 0, self.letter_box_info_list[-1].origin_shape[1])
+                info = self.letter_box_info_list[-1]
+                bbox[:, 0] -= info.dw
+                bbox[:, 0] /= info.w_ratio
+                bbox[:, 0] = np.clip(bbox[:, 0], 0, info.origin_shape[1])
 
-                bbox[:, 1] -= self.letter_box_info_list[-1].dh
-                bbox[:, 1] /= self.letter_box_info_list[-1].h_ratio
-                bbox[:, 1] = np.clip(bbox[:, 1], 0, self.letter_box_info_list[-1].origin_shape[0])
+                bbox[:, 1] -= info.dh
+                bbox[:, 1] /= info.h_ratio
+                bbox[:, 1] = np.clip(bbox[:, 1], 0, info.origin_shape[0])
 
-                bbox[:, 2] -= self.letter_box_info_list[-1].dw
-                bbox[:, 2] /= self.letter_box_info_list[-1].w_ratio
-                bbox[:, 2] = np.clip(bbox[:, 2], 0, self.letter_box_info_list[-1].origin_shape[1])
+                bbox[:, 2] -= info.dw
+                bbox[:, 2] /= info.w_ratio
+                bbox[:, 2] = np.clip(bbox[:, 2], 0, info.origin_shape[1])
 
-                bbox[:, 3] -= self.letter_box_info_list[-1].dh
-                bbox[:, 3] /= self.letter_box_info_list[-1].h_ratio
-                bbox[:, 3] = np.clip(bbox[:, 3], 0, self.letter_box_info_list[-1].origin_shape[0])
+                bbox[:, 3] -= info.dh
+                bbox[:, 3] /= info.h_ratio
+                bbox[:, 3] = np.clip(bbox[:, 3], 0, info.origin_shape[0])
         return bbox
 
     def add_single_record(self, image_id, category_id, bbox, score, in_format='xyxy'):
