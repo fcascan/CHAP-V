@@ -165,8 +165,8 @@ class WebServer:
             # Import fresh values to ensure we get the latest configuration
             from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH
             from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
-            from ..core.config import MAX_CAMERAS_TO_SCAN, CLASSES, DEBUG_MODE
-            
+            from ..core.config import MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, DEBUG_MODE
+
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
                 'inference_device': INFERENCE_DEVICE,
@@ -184,7 +184,8 @@ class WebServer:
                     'label_text_size': LABEL_TEXT_SIZE
                 },
                 'camera_config': {
-                    'max_cameras': MAX_CAMERAS_TO_SCAN
+                    'max_inference_instances': MAX_INFERENCE_INSTANCES,
+                    'npu_core_assignment': NPU_CORE_ASSIGNMENT
                 },
                 'classes': CLASSES
             }
@@ -205,7 +206,7 @@ class WebServer:
                     parser.set('MODE', 'benchmark_mode', str(data['benchmark_mode']).lower())
                     
                 if 'inference_device' in data:
-                    parser.set('INFERENCE', 'device', data['inference_device'])
+                    parser.set('INFERENCE', 'inference_device', data['inference_device'])
                     
                 if 'model_rknn' in data and data['model_rknn']:
                     # Update the model_rknn path to include assets/models/
@@ -217,8 +218,13 @@ class WebServer:
                     model_path = f"assets/models/{data['model_onnx']}"
                     parser.set('PATHS', 'model_onnx', model_path)
                     
-                if 'max_cameras' in data:
-                    parser.set('CAMERA', 'max_cameras_to_scan', str(data['max_cameras']))
+                if 'max_inference_instances' in data:
+                    parser.set('INFERENCE', 'max_inference_instances', str(data['max_inference_instances']))
+
+                if 'npu_core_assignment' in data:
+                    value = str(data['npu_core_assignment']).strip().lower()
+                    if value in ('auto', 'distributed'):
+                        parser.set('INFERENCE', 'npu_core_assignment', value)
                     
                 if 'debug_mode' in data:
                     parser.set('INFERENCE', 'debug_mode', str(data['debug_mode']).lower())

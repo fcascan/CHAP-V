@@ -10,6 +10,8 @@ import runpy
 import sys
 
 from .config import (
+    BENCHMARK_MODE,
+    MAX_INFERENCE_INSTANCES,
     MODEL_LABELS_FILE_PATH,
     VIDEO_FILE_PATH,
 )
@@ -95,9 +97,21 @@ def build_yolo11_argv(args):
 
 
 def run_console_mode(args):
-    """Run the console inference flow through the Rockchip launcher."""
+    """Run console inference.
+
+    Single instance (MAX_INFERENCE_INSTANCES == 1): delegates to the Rockchip
+    yolo11_infer.py script, which supports --img_show / --img_save.
+
+    Multiple instances (MAX_INFERENCE_INSTANCES > 1): reuses the threaded web
+    processing functions (without a web server) so that MAX_INFERENCE_INSTANCES
+    and NPU_CORE_ASSIGNMENT are both honoured.
+    """
     if not setup_system():
         raise SystemExit(1)
+
+    if MAX_INFERENCE_INSTANCES > 1:
+        _run_console_multiinstance()
+        return
 
     infer_script, infer_argv = build_yolo11_argv(args)
 
@@ -107,6 +121,16 @@ def run_console_mode(args):
         runpy.run_path(infer_script, run_name="__main__")
     finally:
         sys.argv = original_argv
+
+
+def _run_console_multiinstance():
+    """Multi-instance console flow — reuses threaded web processing without a web server."""
+    if BENCHMARK_MODE:
+        from ..web.web_video_processing import process_video_web
+        process_video_web(web_server=None)
+    else:
+        from ..web.web_camera_processing import process_cameras_web
+        process_cameras_web(web_server=None)
 
 
 def run_web_mode(args):

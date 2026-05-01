@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -246,8 +246,16 @@
                             </div>
                             
                             <div class="form-group">
-                                <label for="max-cameras">Max Cameras:</label>
-                                <input type="number" id="max-cameras" name="max_cameras" min="1" max="10" value="6">
+                                <label for="max-inference-instances">Max Inference Instances:</label>
+                                <input type="number" id="max-inference-instances" name="max_inference_instances" min="1" max="3" value="3">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="npu-core-assignment">NPU Core Assignment:</label>
+                                <select id="npu-core-assignment" name="npu_core_assignment">
+                                    <option value="auto">Auto (all on Core 0)</option>
+                                    <option value="distributed">Distributed (one core per instance)</option>
+                                </select>
                             </div>
                             
                             <div class="form-group">
@@ -286,7 +294,9 @@
 
     <!-- Footer -->
     <footer class="footer">
-        <p>&copy; 2025 YOLO RKNN Web Interface by fcascan</p>
+        <p>&copy; 2026 YOLO RKNN Web Interface by
+            <a href="https://github.com/fcascan">fcascan</a>
+        </p>
     </footer>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

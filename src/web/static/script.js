@@ -20,7 +20,6 @@ class YOLOWebInterface {
         };
         this.maxDataPoints = 60; // 1 minute interval
         this.currentCameraCount = 1;
-        this.cameraCheckInterval = null;
         this.init();
     }
 
@@ -30,16 +29,13 @@ class YOLOWebInterface {
         this.loadAvailableModels();
         this.loadConfig();
         this.refreshStatus();
-        
+
         // Set up periodic status updates
         setInterval(() => this.refreshStatus(), 500);
-        
+
         // Set up periodic system monitoring updates
         setInterval(() => this.updateSystemMonitor(), 500);
-        
-        // Set up periodic camera check
-        this.startCameraCheck();
-        
+
         // Initialize charts
         this.initCharts();
         
@@ -177,9 +173,10 @@ class YOLOWebInterface {
             const inferenceDeviceSelect = document.getElementById('inference-device-select');
             const modelRknnSelect = document.getElementById('model-rknn-select');
             const modelOnnxSelect = document.getElementById('model-onnx-select');
-            const maxCameras = document.getElementById('max-cameras');
+            const maxInferenceInstances = document.getElementById('max-inference-instances');
+            const npuCoreAssignment = document.getElementById('npu-core-assignment');
             const debugMode = document.getElementById('debug-mode');
-            
+
             if (benchmarkMode) {
                 benchmarkMode.value = config.benchmark_mode.toString();
             }
@@ -192,11 +189,19 @@ class YOLOWebInterface {
             if (modelOnnxSelect && config.model_onnx) {
                 modelOnnxSelect.value = config.model_onnx;
             }
-            if (maxCameras && config.camera_config) {
-                maxCameras.value = config.camera_config.max_cameras;
+            if (maxInferenceInstances && config.camera_config) {
+                maxInferenceInstances.value = config.camera_config.max_inference_instances;
+            }
+            if (npuCoreAssignment && config.camera_config) {
+                npuCoreAssignment.value = config.camera_config.npu_core_assignment || 'auto';
             }
             if (debugMode && config.debug_mode !== undefined) {
                 debugMode.value = config.debug_mode.toString();
+            }
+
+            // Always show one stream window per inference instance (camera and benchmark modes)
+            if (config.camera_config && config.camera_config.max_inference_instances) {
+                this.updateCameraView(config.camera_config.max_inference_instances);
             }
             
             const infoMode = document.getElementById('info-mode');
@@ -233,12 +238,15 @@ class YOLOWebInterface {
             saveBtn.disabled = true;
             
             const formData = new FormData(document.getElementById('config-form'));
+            const rawInstances = parseInt(formData.get('max_inference_instances'));
+            const clampedInstances = Math.min(3, Math.max(1, rawInstances || 1));
             const config = {
                 benchmark_mode: formData.get('benchmark_mode') === 'true',
                 inference_device: formData.get('inference_device'),
                 model_rknn: formData.get('model_rknn'),
                 model_onnx: formData.get('model_onnx'),
-                max_cameras: parseInt(formData.get('max_cameras')),
+                max_inference_instances: clampedInstances,
+                npu_core_assignment: formData.get('npu_core_assignment'),
                 debug_mode: formData.get('debug_mode') === 'true',
             };
             
@@ -503,29 +511,6 @@ class YOLOWebInterface {
     requestConsoleUpdate() {
         if (this.socket && this.socket.connected) {
             this.socket.emit('request_console_update');
-        }
-    }
-    
-    startCameraCheck() {
-        // Check camera count every 2 seconds when processing is active
-        this.cameraCheckInterval = setInterval(() => {
-            if (this.processing_active) {
-                this.checkCameras();
-            }
-        }, 2000);
-    }
-    
-    async checkCameras() {
-        try {
-            const response = await fetch('/api/cameras');
-            const data = await response.json();
-            
-            if (data.camera_count !== this.currentCameraCount) {
-                this.currentCameraCount = data.camera_count;
-                this.updateCameraView(data.camera_count);
-            }
-        } catch (error) {
-            console.error('Error checking cameras:', error);
         }
     }
     

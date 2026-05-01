@@ -79,11 +79,24 @@ class YOLO11InferenceEngine:
         Returns:
             Preprocessed input data ready for inference
         """
-        input_data = rockchip_yolo.preprocess_frame(frame, self.platform)
-        
+        # Inline preprocessing using this engine's own coco_helper so the letterbox
+        # state is never shared across engines — required for thread-safe multi-engine use.
+        img = self.coco_helper.letter_box(
+            im=frame.copy(),
+            new_shape=(app_config.IMG_SIZE[1], app_config.IMG_SIZE[0]),
+            pad_color=(0, 0, 0),
+        )
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if self.platform in ('pytorch', 'onnx'):
+            input_data = img.transpose((2, 0, 1))
+            input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
+            input_data = input_data / 255.
+        else:
+            input_data = np.expand_dims(img, axis=0).astype(np.uint8)
+
         if app_config.DEBUG_MODE:
             logging.debug(f"[DEBUG] Input shape: {input_data.shape}")
-        
+
         return input_data
     
     def run_inference(self, input_data):
@@ -247,13 +260,14 @@ class YOLO11InferenceEngine:
                 logging.warning(f"Error releasing model: {e}")
 
 
-def create_yolo11_engine(device_type="NPU"):
+def create_yolo11_engine(device_type="NPU", npu_core_id=None):
     """
     Factory function to create YOLO11 inference engine based on configuration.
-    
+
     Args:
         device_type: Inference device type ("NPU", "GPU", "CPU")
-        
+        npu_core_id: NPU core index (0, 1, 2) for explicit core pinning. None = RKNN default (Core 0).
+
     Returns:
         YOLO11InferenceEngine instance
     """
@@ -265,16 +279,17 @@ def create_yolo11_engine(device_type="NPU"):
         platform = app_config.ROCKCHIP_TARGET
     else:
         raise ValueError(f"Unsupported device type: {device_type}")
-    
+
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
-    
-    logging.info(f"Creating YOLO11 engine for {device_type} with target {platform} (from config)")
+
+    core_info = f"Core {npu_core_id}" if npu_core_id is not None else "Core 0 (default)"
+    logging.info(f"Creating YOLO11 engine for {device_type}/{core_info} with target {platform}")
     logging.info(f"Model path: {model_path}")
     logging.info(f"Using {len(app_config.CLASSES)} custom classes from config")
     logging.info(f"Using detection thresholds: OBJ={app_config.OBJ_THRESHOLD}, NMS={app_config.NMS_THRESHOLD}")
-    
-    return YOLO11InferenceEngine(model_path, platform)
+
+    return YOLO11InferenceEngine(model_path, platform, device_id=npu_core_id)
 
 
 def yolo11_postprocess_wrapper(outputs, original_shape):

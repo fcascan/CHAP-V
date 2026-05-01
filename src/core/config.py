@@ -40,7 +40,7 @@ def _parse_color(value, fallback):
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, MAX_CAMERAS_TO_SCAN, CLASSES, MODEL_LABELS_FILE_PATH
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     
     # Clear and re-read the config file
@@ -50,7 +50,7 @@ def load_config(is_reload=False):
     
     # Load all configuration values
     BENCHMARK_MODE = parser.getboolean("MODE", "benchmark_mode", fallback=False)
-    INFERENCE_DEVICE = parser.get("INFERENCE", "device", fallback="NPU").strip().upper()
+    INFERENCE_DEVICE = parser.get("INFERENCE", "inference_device", fallback="NPU").strip().upper()
     ROCKCHIP_TARGET = parser.get("INFERENCE", "rockchip_target", fallback="rk3588").strip().lower()
     OBJ_THRESHOLD = parser.getfloat("INFERENCE", "obj_threshold", fallback=0.25)
     NMS_THRESHOLD = parser.getfloat("INFERENCE", "nms_threshold", fallback=0.45)
@@ -62,9 +62,6 @@ def load_config(is_reload=False):
     
     model_onnx_cfg = parser.get("PATHS", "model_onnx", fallback="assets/models/yolov11n.onnx")
     ONNX_MODEL_PATH = os.path.join(BASE_DIR, model_onnx_cfg)
-    
-    benchmark_video_cfg = parser.get("PATHS", "benchmark_video", fallback="assets/videos/benchmark.mp4")
-    VIDEO_FILE_PATH = os.path.join(BASE_DIR, benchmark_video_cfg)
     
     # Load image settings
     img_width = parser.getint("IMAGE", "img_width", fallback=640)
@@ -84,8 +81,21 @@ def load_config(is_reload=False):
     DETECTION_LABEL_TEXT_SIZE = parser.getfloat("DETECTION", "label_text_size", fallback=0.45)
     DETECTION_LABEL_TEXT_THICKNESS = parser.getint("DETECTION", "label_text_thickness", fallback=2)
     
-    # Load camera settings
-    MAX_CAMERAS_TO_SCAN = parser.getint("CAMERA", "max_cameras_to_scan", fallback=6)
+    # Number of parallel inference instances (one per camera/stream)
+    MAX_INFERENCE_INSTANCES = parser.getint("INFERENCE", "max_inference_instances", fallback=3)
+    # "auto" = all instances on Core 0 (RKNN default); "distributed" = instance N -> Core N
+    NPU_CORE_ASSIGNMENT = parser.get("INFERENCE", "npu_core_assignment", fallback="auto").strip().lower()
+
+    # Load benchmark video paths (one per inference instance, indexed benchmark_video_0..N-1)
+    VIDEO_FILE_PATHS = []
+    for _i in range(MAX_INFERENCE_INSTANCES):
+        _cfg = parser.get("PATHS", f"benchmark_video_{_i}", fallback="").strip()
+        if _cfg:
+            VIDEO_FILE_PATHS.append(os.path.join(BASE_DIR, _cfg))
+    if not VIDEO_FILE_PATHS:
+        _fallback = parser.get("PATHS", "benchmark_video", fallback="assets/videos/benchmark.mp4").strip()
+        VIDEO_FILE_PATHS.append(os.path.join(BASE_DIR, _fallback))
+    VIDEO_FILE_PATH = VIDEO_FILE_PATHS[0]
     
     # Load classes with fallback order:
     # 1) PATHS.model_labels from config.ini
@@ -147,7 +157,7 @@ def load_config(is_reload=False):
     logging.info(
         f"[CONFIG] Configuration {action}:\n"
         f"  benchmark_mode = {BENCHMARK_MODE}\n"
-        f"  device = {INFERENCE_DEVICE}\n"
+        f"  inference_device = {INFERENCE_DEVICE}\n"
         f"  rockchip_target = {ROCKCHIP_TARGET}\n"
         f"  obj_threshold = {OBJ_THRESHOLD}\n"
         f"  nms_threshold = {NMS_THRESHOLD}\n"
@@ -156,7 +166,7 @@ def load_config(is_reload=False):
         f"  detection_label_text_size = {DETECTION_LABEL_TEXT_SIZE}\n"
         f"  detection_label_text_thickness = {DETECTION_LABEL_TEXT_THICKNESS}\n"
         f"  debug = {debug_status}\n"
-        f"  max_cameras = {MAX_CAMERAS_TO_SCAN}"
+        f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}"
     )
     
     # Return updated config for convenience
@@ -165,7 +175,7 @@ def load_config(is_reload=False):
         'inference_device': INFERENCE_DEVICE,
         'debug_mode': DEBUG_MODE,
         'overlay_enabled': OVERLAY_ENABLED,
-        'max_cameras': MAX_CAMERAS_TO_SCAN,
+        'max_inference_instances': MAX_INFERENCE_INSTANCES,
         'img_size': IMG_SIZE,
         'classes': CLASSES,
         'detection_box_color': DETECTION_BOX_COLOR,
