@@ -347,51 +347,81 @@ class WebServer:
                 
         @self.app.route('/api/download/latest_csv')
         def download_latest_csv():
-            """Download the latest CSV performance file"""
+            """Download all CSVs from the latest run (ZIP when multiple instances)."""
             import glob
+            import re
+            import zipfile
+            import io
             from flask import send_file
-            
+
+            def _ts(path):
+                m = re.search(r'(\d{8}_\d{6})', os.path.basename(path))
+                return m.group(1) if m else ''
+
             try:
-                # Search for latest CSV files
-                csv_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', 'performance_metrics_*.csv')
-                csv_files = glob.glob(csv_pattern)
-                
+                csv_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', '*_performance_metrics_*.csv')
+                csv_files = [f for f in glob.glob(csv_pattern) if _ts(f)]
+
                 if not csv_files:
                     return jsonify({'error': 'No CSV files found'}), 404
-                
-                # Get the most recent file
-                latest_csv = max(csv_files, key=os.path.getmtime)
-                
-                return send_file(latest_csv, 
-                               as_attachment=True,
-                               download_name=os.path.basename(latest_csv),
-                               mimetype='text/csv')
-                               
+
+                run_ts = max(_ts(f) for f in csv_files)
+                run_files = sorted(f for f in csv_files if _ts(f) == run_ts)
+
+                if len(run_files) == 1:
+                    return send_file(run_files[0], as_attachment=True,
+                                     download_name=os.path.basename(run_files[0]),
+                                     mimetype='text/csv')
+
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for f in run_files:
+                        zf.write(f, os.path.basename(f))
+                buf.seek(0)
+                return send_file(buf, as_attachment=True,
+                                 download_name=f"csv_{run_ts}.zip",
+                                 mimetype='application/zip')
+
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
-                
+
         @self.app.route('/api/download/latest_graphs')
         def download_latest_graphs():
-            """Download the latest PNG graphs file"""
+            """Download all graphs from the latest run (ZIP when multiple instances)."""
             import glob
+            import re
+            import zipfile
+            import io
             from flask import send_file
-            
+
+            def _ts(path):
+                m = re.search(r'(\d{8}_\d{6})', os.path.basename(path))
+                return m.group(1) if m else ''
+
             try:
-                # Search for latest PNG files
-                png_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', 'performance_metrics_*_graphs.png')
-                png_files = glob.glob(png_pattern)
-                
+                png_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', '*_performance_metrics_*_graphs.png')
+                png_files = [f for f in glob.glob(png_pattern) if _ts(f)]
+
                 if not png_files:
                     return jsonify({'error': 'No graph files found'}), 404
-                
-                # Get the most recent file
-                latest_png = max(png_files, key=os.path.getmtime)
-                
-                return send_file(latest_png,
-                               as_attachment=True, 
-                               download_name=os.path.basename(latest_png),
-                               mimetype='image/png')
-                               
+
+                run_ts = max(_ts(f) for f in png_files)
+                run_files = sorted(f for f in png_files if _ts(f) == run_ts)
+
+                if len(run_files) == 1:
+                    return send_file(run_files[0], as_attachment=True,
+                                     download_name=os.path.basename(run_files[0]),
+                                     mimetype='image/png')
+
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for f in run_files:
+                        zf.write(f, os.path.basename(f))
+                buf.seek(0)
+                return send_file(buf, as_attachment=True,
+                                 download_name=f"graphs_{run_ts}.zip",
+                                 mimetype='application/zip')
+
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
             

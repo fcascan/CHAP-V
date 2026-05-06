@@ -167,7 +167,8 @@ def load_config(is_reload=False):
         f"  detection_label_text_size = {DETECTION_LABEL_TEXT_SIZE}\n"
         f"  detection_label_text_thickness = {DETECTION_LABEL_TEXT_THICKNESS}\n"
         f"  debug = {debug_status}\n"
-        f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}"
+        f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}\n"
+        f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}"
     )
     
     # Return updated config for convenience

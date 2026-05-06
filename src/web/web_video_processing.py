@@ -11,18 +11,48 @@ import threading
 import os
 from ..core.config import *
 from ..utils.frame_overlay import calculate_recent_average_ms, calculate_recent_fps, draw_processing_overlay
+from ..utils.csv_analysis import save_instance_performance_data
 from .video_integration import get_video_stream_manager
 from .console_integration import get_web_logger
 from ..processing.yolo11_inference import create_yolo11_engine
 
+try:
+    import psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
 
-def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger):
+try:
+    from ..utils.my_htop import get_npu_info, get_gpu_info
+    _HTOP_AVAILABLE = True
+except ImportError:
+    _HTOP_AVAILABLE = False
+
+
+def _read_system_stats():
+    """Read current CPU/NPU/GPU usage. Returns (cpu_pct, npu_loads, gpu_pct)."""
+    cpu_pct = psutil.cpu_percent() if _PSUTIL_AVAILABLE else 0.0
+    if _HTOP_AVAILABLE:
+        npu_loads, _ = get_npu_info()
+        gpu_load, _ = get_gpu_info()
+        gpu_pct = gpu_load if gpu_load is not None else 0
+        if not npu_loads:
+            npu_loads = [0, 0, 0]
+    else:
+        npu_loads, gpu_pct = [0, 0, 0], 0
+    return cpu_pct, npu_loads, gpu_pct
+
+
+def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger,
+                   results_dir=None, run_timestamp=None, npu_core_id=None, benchmark_video=None):
     """Process one benchmark video stream until it ends or processing is stopped."""
     display_timestamps = []
     inftime_buf = []
     total_frames = 0
+    csv_rows = []
 
     while processing_active_fn():
+        frame_start = time.time()
         ret, frame = cap.read()
         if not ret:
             logger.info(f"Stream {idx}: video completed ({total_frames} frames).")
@@ -31,6 +61,7 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
         start_inf = time.time()
         boxes, classes, scores, _ = engine.detect_objects(frame)
         inf_time = time.time() - start_inf
+        total_frame_ms = (time.time() - frame_start) * 1000
 
         inftime_buf.append(inf_time)
         if len(inftime_buf) > 30:
@@ -42,6 +73,24 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
         if len(display_timestamps) > 30:
             display_timestamps.pop(0)
         fps = calculate_recent_fps(display_timestamps[-30:])
+
+        try:
+            cpu_pct, npu_loads, gpu_pct = _read_system_stats()
+        except Exception:
+            cpu_pct, npu_loads, gpu_pct = 0.0, [0, 0, 0], 0
+        csv_rows.append({
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S") + f".{int((now % 1) * 1000):03d}",
+            'frame_number': total_frames + 1,
+            'inference_time_ms': round(inf_time * 1000, 2),
+            'total_frame_time_ms': round(total_frame_ms, 2),
+            'cpu_usage_percent': round(cpu_pct, 1),
+            'npu_core0_percent': npu_loads[0] if len(npu_loads) > 0 else 0,
+            'npu_core1_percent': npu_loads[1] if len(npu_loads) > 1 else 0,
+            'npu_core2_percent': npu_loads[2] if len(npu_loads) > 2 else 0,
+            'gpu_usage_percent': gpu_pct,
+            'fps_actual': round(fps, 2),
+            'detections_count': len(boxes) if boxes is not None else 0,
+        })
 
         disp = frame.copy()
         draw_processing_overlay(
@@ -61,6 +110,14 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             cv2.imwrite(os.path.join(output_dir, f"inference_output_stream{idx}.jpg"), disp)
         video_manager.update_frame(disp, camera_id=idx)
         total_frames += 1
+
+    if csv_rows and results_dir and run_timestamp:
+        model_name = os.path.basename(engine.model_path) if hasattr(engine, 'model_path') else None
+        save_instance_performance_data(
+            csv_rows, results_dir, INFERENCE_DEVICE, run_timestamp, f"stream{idx}", logger,
+            npu_core_id=npu_core_id, model_name=model_name,
+            benchmark_video=benchmark_video,
+        )
 
 
 def process_video_web(yolo_postprocess_func=None, web_server=None):
@@ -94,7 +151,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
                 core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else None
                 engine = create_yolo11_engine(INFERENCE_DEVICE, npu_core_id=core_id)
                 yolo_engines.append(engine)
-                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (NPU Core {core_id if core_id is not None else 0})")
+                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (NPU Core {core_id if core_id is not None else 'auto'})")
                 if DEBUG_MODE:
                     logging.debug(f"[DEBUG] Stream {idx} engine platform: {engine.platform}")
         else:
@@ -112,11 +169,14 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
             cap.release()
         return
 
-    video_manager.start()
-
-    OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "images")
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    OUTPUT_DIR = os.path.join(PROJECT_ROOT, "images")
+    RESULTS_DIR = os.path.join(PROJECT_ROOT, "src", "processing", "results")
+    run_timestamp = time.strftime("%Y%m%d_%H%M%S")
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
+
+    video_manager.start()
 
     logger.info("Live benchmark threat detection started")
 
@@ -126,9 +186,13 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     threads = []
     for idx, cap in enumerate(caps):
         engine = yolo_engines[idx if len(yolo_engines) > 1 else 0]
+        core_id = idx if (INFERENCE_DEVICE == "NPU" and NPU_CORE_ASSIGNMENT == "distributed" and len(caps) > 1) else None
+        video_name = os.path.basename(VIDEO_FILE_PATHS[idx]) if idx < len(VIDEO_FILE_PATHS) else None
         t = threading.Thread(
             target=_stream_worker,
             args=(idx, cap, engine, video_manager, processing_active, OUTPUT_DIR, logger),
+            kwargs={'results_dir': RESULTS_DIR, 'run_timestamp': run_timestamp,
+                    'npu_core_id': core_id, 'benchmark_video': video_name},
             daemon=True,
             name=f"benchmark-stream-{idx}",
         )

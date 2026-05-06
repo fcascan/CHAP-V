@@ -69,14 +69,20 @@ def calculate_time_axis_intervals(total_points):
     else:  # More than 60 minutes
         return max(1, total_points // 60), "1hr"  # Every 1 hour equivalent
 
-def generate_performance_graphs(csv_filepath, output_path=None):
+def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
+                                benchmark_video=None, camera_index=None, inference_device=None):
     """
     Generate performance analysis graphs as PNG file using PIL.
-    
+
     Args:
         csv_filepath (str): Path to the CSV file
         output_path (str): Output path for the PNG file (optional)
-    
+        npu_core_id (int|None): NPU core index used for this run (0/1/2), or None
+        model_name (str|None): Model filename, e.g. "detectS2.rknn"
+        benchmark_video (str|None): Video filename used in benchmark mode
+        camera_index (int|None): Camera index used in camera mode
+        inference_device (str|None): Inference device, e.g. "NPU"
+
     Returns:
         str: Path to the generated PNG file
     """
@@ -183,33 +189,35 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         subtitle = f"Source: {os.path.basename(csv_filepath)}"
         draw.text((20, 20), title, fill='black', font=font_large)
         draw.text((20, 50), subtitle, fill='black', font=font)
-        draw.text((20, 75), f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}", fill='black', font=small_font)
+        draw.text((20, 75), f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}", fill='black', font=font)
         
         # Metadata lines
         y_meta = 95
-        if 'model_path' in metadata:
-            model_text = f"Model: {os.path.basename(metadata['model_path'])}"
-            draw.text((20, y_meta), model_text, fill='black', font=small_font)
+
+        if benchmark_video:
+            draw.text((20, y_meta), f"Video source: {benchmark_video}", fill='black', font=font)
+            y_meta += 18
+        elif camera_index is not None:
+            draw.text((20, y_meta), f"Camera: {camera_index}", fill='black', font=font)
+            y_meta += 18
+
+        if inference_device:
+            draw.text((20, y_meta), f"Device: {inference_device}", fill='black', font=font)
+            y_meta += 18
+
+        if npu_core_id is not None:
+            draw.text((20, y_meta), f"NPU Core: {npu_core_id}", fill='black', font=font)
             y_meta += 18
         
-        if 'benchmark_video' in metadata:
-            video_text = f"Video: {os.path.basename(metadata['benchmark_video'])}"
-            draw.text((20, y_meta), video_text, fill='black', font=small_font)
+        _model_display = model_name or (os.path.basename(metadata['model_path']) if 'model_path' in metadata else None)
+        if _model_display:
+            draw.text((20, y_meta), f"Model: {_model_display}", fill='black', font=font)
             y_meta += 18
-        elif 'camera_index' in metadata:
-            camera_text = f"Camera: {metadata['camera_index']}"
-            draw.text((20, y_meta), camera_text, fill='navy', font=small_font)
-            y_meta += 18
-        
-        if 'inference_device' in metadata:
-            device_text = f"Device: {metadata['inference_device']}"
-            draw.text((20, y_meta), device_text, fill='black', font=small_font)
-            y_meta += 18
-        
+
         # Statistics summary
         y_pos = y_meta + 10
         stats_text = [
-            f"SUMMARY STATISTICS",
+            f"Summary Statistics",
             f"  • Total frames analyzed: {len(inference_times)}",
             f"  • Average inference time: {inf_mean:.1f} ms",
             f"  • Median inference time: {inf_median:.1f} ms", 
@@ -223,9 +231,9 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         
         for i, text in enumerate(stats_text):
             if i == 0:  # Header
-                draw.text((20, y_pos), text, fill='navy', font=font)
+                draw.text((20, y_pos), text, fill='black', font=font_large)
             else:
-                draw.text((20, y_pos), text, fill='black', font=small_font)
+                draw.text((20, y_pos), text, fill='black', font=font)
             y_pos += 25
         
         # Calculate time axis intervals
@@ -239,7 +247,7 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         
         # Draw inference time graph
         draw.rectangle([20, graph_y, 20 + graph_width, graph_y + graph_height], outline='black', width=2)
-        draw.text((20, graph_y - 25), "Inference Time Over Time (ms)", fill='black', font=font)
+        draw.text((20, graph_y - 25), "Inference Time Over Time (ms)", fill='black', font=font_large)
         
         if len(inference_times) > 0:
             max_val = max(inference_times)
@@ -334,17 +342,17 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                     y2 = graph_y + graph_height - int((sampled_data[i + 1] - min_val) / val_range * graph_height)
                     draw.line([x1, y1, x2, y2], fill='blue', width=2)
                 
-                # Draw mean line (moved text below graph)
+                # Draw mean line (dashed)
                 mean_y = graph_y + graph_height - int((inf_mean - min_val) / val_range * graph_height)
-                draw.line([20, mean_y, 20 + graph_width, mean_y], fill='red', width=2)
-        
+                draw_dashed_line(draw, (20, mean_y), (20 + graph_width, mean_y), fill='blue')
+
         # Add text label below Inference Time graph
-        draw.text((25, graph_y + graph_height + 20), f"Mean: {inf_mean:.1f}ms", fill='red', font=small_font)
+        draw.text((25, graph_y + graph_height + 20), f"Mean: {inf_mean:.1f}ms", fill='blue', font=font)
         
         # Graph 2: FPS Timeline with improved scaling
         graph2_x = 720
         draw.rectangle([graph2_x, graph_y, graph2_x + graph_width, graph_y + graph_height], outline='black', width=2)
-        draw.text((graph2_x, graph_y - 25), "FPS Over Time", fill='black', font=font)
+        draw.text((graph2_x, graph_y - 25), "FPS Over Time", fill='black', font=font_large)
         
         if len(fps_data) > 0:
             max_fps = max(fps_data)
@@ -405,7 +413,7 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                 draw_dashed_line(draw, (graph2_x, mean_y), (graph2_x + graph_width, mean_y), fill='green')
         
         # Add text label below FPS graph
-        draw.text((graph2_x + 5, graph_y + graph_height + 20), f"Mean: {fps_mean:.1f} FPS", fill='green', font=small_font)
+        draw.text((graph2_x + 5, graph_y + graph_height + 20), f"Mean: {fps_mean:.1f} FPS", fill='green', font=font)
         
         # spacing between rows (increased for clearer separation)
         graph_row_sep = 100
@@ -416,7 +424,8 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         graph4_width = (img_width - 60) // 2  # two columns with 20px margins and 20px gap
         graph4_height = 140
         draw.rectangle([graph4_x, graph4_y, graph4_x + graph4_width, graph4_y + graph4_height], outline='black', width=2)
-        draw.text((graph4_x, graph4_y - 25), "NPU Usage (%)", fill='black', font=font)
+        _npu_title = f"NPU Core {npu_core_id} Usage (%)" if npu_core_id is not None else "NPU Usage (%)"
+        draw.text((graph4_x, graph4_y - 25), _npu_title, fill='black', font=font_large)
         
         if len(npu_core0) > 0:
             sampled_npu = npu_core0[::step][:sample_size]
@@ -474,7 +483,7 @@ def generate_performance_graphs(csv_filepath, output_path=None):
         graph5_width = graph4_width
         graph5_height = 140
         draw.rectangle([graph5_x, graph5_y, graph5_x + graph5_width, graph5_y + graph5_height], outline='black', width=2)
-        draw.text((graph5_x, graph5_y - 25), "CPU Usage (%)", fill='black', font=font)
+        draw.text((graph5_x, graph5_y - 25), "CPU Usage (%)", fill='black', font=font_large)
         
         if len(cpu_usage) > 0:
             sampled_cpu = cpu_usage[::step][:sample_size]
@@ -527,15 +536,16 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                 draw_dashed_line(draw, (graph5_x, cpu_avg_y), (graph5_x + graph5_width, cpu_avg_y), fill='darkviolet')
         
         # Add text labels below graphs for means
-        draw.text((graph4_x + 5, graph4_y + graph4_height + 30), f"Avg: {npu_mean:.1f}%", fill='darkorange', font=small_font)
-        draw.text((graph5_x + 5, graph5_y + graph5_height + 30), f"Avg: {cpu_mean:.1f}%", fill='darkviolet', font=small_font)
+        draw.text((graph4_x + 5, graph4_y + graph4_height + 30), f"Avg: {npu_mean:.1f}%", fill='darkorange', font=font)
+        draw.text((graph5_x + 5, graph5_y + graph5_height + 30), f"Avg: {cpu_mean:.1f}%", fill='darkviolet', font=font)
         
         # Graph 3: NPU vs CPU Usage with average lines (third row, full width)
         graph3_y = graph4_y + graph4_height + graph_row_sep
         graph3_height = 150
         
         draw.rectangle([20, graph3_y, 20 + graph_width, graph3_y + graph3_height], outline='black', width=2)
-        draw.text((20, graph3_y - 25), "NPU vs CPU Usage Comparison (%)", fill='black', font=font)
+        _cmp_title = f"NPU Core {npu_core_id} vs CPU Usage Comparison (%)" if npu_core_id is not None else "NPU vs CPU Usage Comparison (%)"
+        draw.text((20, graph3_y - 25), _cmp_title, fill='black', font=font_large)
         
         if len(npu_core0) > 0 and len(cpu_usage) > 0:
             sampled_npu = npu_core0[::step][:sample_size]
@@ -592,43 +602,46 @@ def generate_performance_graphs(csv_filepath, output_path=None):
                     y2 = graph3_y + graph3_height - int(sampled_cpu[i + 1] * graph3_height / 100)
                     draw.line([x1, y1, x2, y2], fill='purple', width=2)
                 
-                # Draw dashed average lines (text moved below graph)
-                npu_avg_y = graph3_y + graph3_height - int(npu_mean * graph3_height / 100)
-                cpu_avg_y = graph3_y + graph3_height - int(cpu_mean * graph3_height / 100)
-                draw_dashed_line(draw, (20, npu_avg_y), (20 + graph_width, npu_avg_y), fill='darkorange')
-                draw_dashed_line(draw, (20, cpu_avg_y), (20 + graph_width, cpu_avg_y), fill='darkviolet')
+                # Draw dashed average lines
+                # npu_avg_y = graph3_y + graph3_height - int(npu_mean * graph3_height / 100)
+                # cpu_avg_y = graph3_y + graph3_height - int(cpu_mean * graph3_height / 100)
+                # draw_dashed_line(draw, (20, npu_avg_y), (20 + graph_width, npu_avg_y), fill='darkorange')
+                # draw_dashed_line(draw, (20, cpu_avg_y), (20 + graph_width, cpu_avg_y), fill='darkviolet')
         
         # Add text labels below NPU vs CPU graph
-        draw.text((25, graph3_y + graph3_height + 20), f"NPU Avg: {npu_mean:.1f}%", fill='darkorange', font=small_font)
-        draw.text((25, graph3_y + graph3_height + 40), f"CPU Avg: {cpu_mean:.1f}%", fill='darkviolet', font=small_font)
+        # draw.text((25, graph3_y + graph3_height + 20), f"NPU Avg: {npu_mean:.1f}%", fill='darkorange', font=font)
+        # draw.text((25, graph3_y + graph3_height + 40), f"CPU Avg: {cpu_mean:.1f}%", fill='darkviolet', font=font)
         
         # Legend (updated position and content)
         legend_x = 20
         legend_y = graph3_y + graph3_height + 90
-        draw.text((legend_x, legend_y), "LEGEND:", fill='black', font=font)
+        draw.text((legend_x, legend_y), "LEGEND:", fill='black', font=font_large)
         
         # Solid lines
         draw.line([legend_x, legend_y + 30, legend_x + 30, legend_y + 30], fill='blue', width=3)
-        draw.text((legend_x + 40, legend_y + 25), "Inference Time (ms)", fill='black', font=small_font)
+        draw.text((legend_x + 40, legend_y + 25), "Inference Time (ms)", fill='black', font=font)
         
         draw.line([legend_x, legend_y + 50, legend_x + 30, legend_y + 50], fill='green', width=3)
-        draw.text((legend_x + 40, legend_y + 45), "FPS Over Time", fill='black', font=small_font)
+        draw.text((legend_x + 40, legend_y + 45), "FPS Over Time", fill='black', font=font)
         
         draw.line([legend_x, legend_y + 70, legend_x + 30, legend_y + 70], fill='orange', width=3)
-        draw.text((legend_x + 40, legend_y + 65), "NPU Usage (%)", fill='black', font=small_font)
+        draw.text((legend_x + 40, legend_y + 65), "NPU Usage (%)", fill='black', font=font)
         
         draw.line([legend_x, legend_y + 90, legend_x + 30, legend_y + 90], fill='purple', width=3)
-        draw.text((legend_x + 40, legend_y + 85), "CPU Usage (%)", fill='black', font=small_font)
+        draw.text((legend_x + 40, legend_y + 85), "CPU Usage (%)", fill='black', font=font)
         
         # Dashed lines
-        draw_dashed_line(draw, (legend_x, legend_y + 110), (legend_x + 30, legend_y + 110), fill='darkorange')
-        draw.text((legend_x + 40, legend_y + 105), "NPU Average", fill='black', font=small_font)
-        
-        draw_dashed_line(draw, (legend_x, legend_y + 130), (legend_x + 30, legend_y + 130), fill='darkviolet')
-        draw.text((legend_x + 40, legend_y + 125), "CPU Average", fill='black', font=small_font)
-        
-        draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='green')
-        draw.text((legend_x + 40, legend_y + 145), "FPS Average", fill='black', font=small_font)
+        draw_dashed_line(draw, (legend_x, legend_y + 110), (legend_x + 30, legend_y + 110), fill='blue')
+        draw.text((legend_x + 40, legend_y + 105), "Inference Time Average", fill='black', font=font)
+
+        draw_dashed_line(draw, (legend_x, legend_y + 130), (legend_x + 30, legend_y + 130), fill='green')
+        draw.text((legend_x + 40, legend_y + 125), "FPS Average", fill='black', font=font)
+
+        draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='darkorange')
+        draw.text((legend_x + 40, legend_y + 145), "NPU Average", fill='black', font=font)
+
+        draw_dashed_line(draw, (legend_x, legend_y + 170), (legend_x + 30, legend_y + 170), fill='darkviolet')
+        draw.text((legend_x + 40, legend_y + 165), "CPU Average", fill='black', font=font)
         
         # Save image with higher DPI for better readability (keep pixel sizes unchanged)
         try:

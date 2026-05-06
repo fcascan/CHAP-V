@@ -1196,11 +1196,11 @@ if (document.readyState === 'loading') {
 }
 
 function downloadLatestCSV() {
-    window.location.href = '/api/download/latest_csv';
+    window.location.href = '/api/download/latest_csv?t=' + Date.now();
 }
 
 function downloadLatestGraphs() {
-    window.location.href = '/api/download/latest_graphs';
+    window.location.href = '/api/download/latest_graphs?t=' + Date.now();
 }
 
 // Initialize the interface when the page loads

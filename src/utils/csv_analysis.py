@@ -10,6 +10,55 @@ import time
 import glob
 import statistics
 
+def save_instance_performance_data(csv_rows, results_dir, device_name, run_timestamp, label,
+                                   logger=None, npu_core_id=None, model_name=None,
+                                   benchmark_video=None, camera_index=None):
+    """Write per-instance performance CSV and trigger graph generation.
+
+    Args:
+        csv_rows: list of dicts with per-frame metrics
+        results_dir: absolute path to results directory
+        device_name: e.g. "NPU"
+        run_timestamp: shared timestamp string "YYYYMMDD_HHMMSS"
+        label: instance identifier, e.g. "cam0" or "stream1"
+        logger: optional logger; falls back to print
+        npu_core_id: NPU core index used (0/1/2), or None when not applicable
+        model_name: model filename, e.g. "april22_2.rknn"
+        benchmark_video: video filename used in benchmark mode, e.g. "benchmark.mp4"
+        camera_index: camera index used in camera mode, e.g. 0
+    """
+    def _log(msg):
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
+
+    if not csv_rows:
+        _log(f"[{label}] No performance data collected, skipping CSV export.")
+        return
+
+    os.makedirs(results_dir, exist_ok=True)
+    core_part = f"_core{npu_core_id}" if npu_core_id is not None else ""
+    csv_path = os.path.join(results_dir, f"{run_timestamp}_performance_metrics_{device_name}{core_part}_{label}.csv")
+
+    try:
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=list(csv_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        _log(f"[{label}] Performance CSV saved: {os.path.basename(csv_path)}")
+    except Exception as e:
+        _log(f"[{label}] Failed to write CSV: {e}")
+        return
+
+    try:
+        auto_analyze_latest_csv(device_name=device_name, logger=logger, csv_filepath=csv_path,
+                                npu_core_id=npu_core_id, model_name=model_name,
+                                benchmark_video=benchmark_video, camera_index=camera_index,
+                                inference_device=device_name)
+    except Exception as e:
+        _log(f"[{label}] Graph generation failed: {e}")
+
 
 def analyze_csv_performance_data(csv_filepath):
     """
@@ -195,7 +244,9 @@ def print_csv_analysis(csv_filepath):
     print("=" * 60)
 
 
-def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None):
+def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
+                            npu_core_id=None, model_name=None,
+                            benchmark_video=None, camera_index=None, inference_device=None):
     """Automatically find and analyze the most recent performance CSV file."""
 
     def log_message(msg):
@@ -239,7 +290,18 @@ def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None):
             with open(analysis_filepath, 'w', encoding='utf-8') as f:
                 f.write("Performance Analysis Report\n")
                 f.write(f"Source CSV: {os.path.basename(latest_csv)}\n")
-                f.write(f"Generated on: {time.ctime()}\n\n")
+                f.write(f"Generated on: {time.ctime()}\n")
+                if model_name:
+                    f.write(f"Model: {model_name}\n")
+                if npu_core_id is not None:
+                    f.write(f"NPU Core: {npu_core_id}\n")
+                if inference_device:
+                    f.write(f"Device: {inference_device}\n")
+                if benchmark_video:
+                    f.write(f"Video: {benchmark_video}\n")
+                if camera_index is not None:
+                    f.write(f"Camera: {camera_index}\n")
+                f.write("\n")
                 f.write(analysis_text)
 
             log_message(f"Analysis report saved to: {os.path.basename(analysis_filepath)}")
@@ -250,7 +312,12 @@ def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None):
                 base_name = latest_csv.rsplit('.', 1)[0]
                 png_path = f"{base_name}_graphs.png"
 
-                generated_graph = generate_performance_graphs(latest_csv, png_path)
+                generated_graph = generate_performance_graphs(latest_csv, png_path,
+                                                              npu_core_id=npu_core_id,
+                                                              model_name=model_name,
+                                                              benchmark_video=benchmark_video,
+                                                              camera_index=camera_index,
+                                                              inference_device=inference_device)
                 if generated_graph:
                     log_message(f"Performance graphs saved to: {os.path.basename(generated_graph)}")
                 else:
