@@ -148,10 +148,10 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     try:
         if INFERENCE_DEVICE == "NPU" and len(caps) > 1:
             for idx in range(len(caps)):
-                core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else None
+                core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else 0
                 engine = create_yolo11_engine(INFERENCE_DEVICE, npu_core_id=core_id)
                 yolo_engines.append(engine)
-                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (NPU Core {core_id if core_id is not None else 'auto'})")
+                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (NPU Core {core_id})")
                 if DEBUG_MODE:
                     logging.debug(f"[DEBUG] Stream {idx} engine platform: {engine.platform}")
         else:
@@ -186,7 +186,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     threads = []
     for idx, cap in enumerate(caps):
         engine = yolo_engines[idx if len(yolo_engines) > 1 else 0]
-        core_id = idx if (INFERENCE_DEVICE == "NPU" and NPU_CORE_ASSIGNMENT == "distributed" and len(caps) > 1) else None
+        core_id = idx if (INFERENCE_DEVICE == "NPU" and NPU_CORE_ASSIGNMENT == "distributed" and len(caps) > 1) else (0 if INFERENCE_DEVICE == "NPU" else None)
         video_name = os.path.basename(VIDEO_FILE_PATHS[idx]) if idx < len(VIDEO_FILE_PATHS) else None
         t = threading.Thread(
             target=_stream_worker,
