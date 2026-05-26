@@ -78,8 +78,8 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 
 ### Inference Devices
 - **NPU Mode**: `device = NPU` - Uses RKNN Lite API with RK3588 Neural Processing Unit
-- **GPU Mode**: `device = GPU` - Uses OpenCV DNN with OpenCL backend for Mali G610 GPU  
-- **CPU Mode**: `device = CPU` - Uses OpenCV DNN with CPU backend
+- **GPU Mode**: `device = GPU` - Uses ncnn + Vulkan for Mali-G610 GPU (requires Mali Vulkan blob, see below)
+- **CPU Mode**: `device = CPU` - Uses ONNX Runtime with CPU backend
 
 ### Processing Modes
 - **Camera mode**: `benchmark_mode = false` - Live camera processing
@@ -105,12 +105,82 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 - **System Info**: Current status, processing mode, and frame availability
 - **Console Output**: Real-time logging with color-coded message levels
 
+## GPU Inference Setup (Mali-G610 + Vulkan)
+
+GPU mode uses **ncnn** with the **Vulkan** backend to run inference on the Mali-G610 GPU.
+This requires two system-level prerequisites beyond the Python packages:
+
+### 1. Mali Vulkan blob
+
+The default Mali blob shipped with Ubuntu for RK3588 is OpenCL-only and does **not**
+include Vulkan. You need the GBM variant with Vulkan:
+
+```bash
+# The .deb is included in the installation/ directory
+sudo dpkg -i installation/libmali-valhall-g610-g24p0-gbm_1.9-1_arm64.deb
+```
+
+Or download from [tsukumijima/libmali-rockchip releases](https://github.com/tsukumijima/libmali-rockchip/releases)
+(file: `libmali-valhall-g610-g24p0-gbm_*_arm64.deb`).
+
+### 2. Vulkan ICD registration
+
+```bash
+sudo mkdir -p /etc/vulkan/icd.d
+sudo tee /etc/vulkan/icd.d/mali.json << 'EOF'
+{
+    "file_format_version": "1.0.0",
+    "ICD": {
+        "library_path": "/usr/lib/aarch64-linux-gnu/libmali.so",
+        "api_version": "1.2.204"
+    }
+}
+EOF
+```
+
+### 3. ncnn model conversion (requires a PC with ultralytics)
+
+```bash
+# On a PC with Python + ultralytics installed:
+python3 -c "from ultralytics import YOLO; YOLO('your_model.pt').export(format='ncnn', imgsz=640)"
+# Copy the generated *_ncnn_model/ directory to assets/models/
+# Update config.ini: model_ncnn = assets/models/your_model_ncnn_model/model.ncnn.param
+```
+
+> **setup.sh** handles steps 1 and 2 automatically if the .deb is present in `installation/`.
+
+### Verify Vulkan detection
+
+```bash
+python3 -c "
+import ncnn
+ncnn.create_gpu_instance()
+count = ncnn.get_gpu_count()
+print('GPU count:', count)
+if count > 0:
+    print('Device:', ncnn.get_gpu_info(0).device_name())
+ncnn.destroy_gpu_instance()
+"
+# Expected: GPU count: 2   Device: Mali-G610
+```
+
+### Observed performance (benchmark.mp4, 1 stream)
+
+| Mode | Inference (ms) | FPS | CPU % | GPU % |
+|------|---------------|-----|-------|-------|
+| NPU  | ~15           | ~35 | ~15   | 0     |
+| GPU (ncnn+Vulkan) | ~67–74 | ~13 | ~21 | ~58 |
+| GPU (TIMVX/CPU fallback) | ~397 | ~2.5 | ~94 | ~5 |
+
+---
+
 ## Troubleshooting
 
 - **No cameras**: Check `ls /dev/video*`
 - **Permission denied**: Use `sudo` to run this program
 - **Web interface not accessible**: Check firewall settings and use correct IP
 - **Video stream not loading**: Ensure processing is started and frames are available
+- **GPU mode falling back to CPU**: Install Mali Vulkan blob (see GPU Inference Setup above)
 
 ## Model Compatibility
 Ensure the RKNN model is compatible with your Rockchip device and matches the input size (640, 640).
