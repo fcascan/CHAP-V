@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """system_setup.py
 System setup and configuration for YOLO RKNN/NPU project
-by fcascan 2025
+by fcascan 2026
 """
 import sys
 import logging
 from .dependency_manager import check_and_install_dependencies, check_rknn_availability, check_gpu_availability, ensure_root_permissions, require_root_permissions
-
 
 def setup_system():
     """Complete system setup including dependencies and permissions."""
@@ -41,7 +40,8 @@ def setup_inference_device(inference_device):
         # NPU setup
         if check_rknn_availability():
             try:
-                from rknnlite.api import RKNNLite
+                from importlib import import_module
+                RKNNLite = import_module("rknnlite.api.rknn_lite").RKNNLite
                 from src.utils.rknn_post_processing import post_process
                 from src.utils.my_htop import log_npu_usage
                 print("[INFO] RKNN NPU libraries loaded successfully.")

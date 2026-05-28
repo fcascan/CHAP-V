@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """install_dependencies.py
 Automatic dependency installer
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import sys
@@ -100,29 +100,63 @@ def install_package(package_name, use_sudo=False):
         return install_package_alternative(package_name)
 
 def install_package_alternative(package_name):
-    """Try alternative installation methods."""
-    logger.info(f"Trying alternative installation for {package_name}...")
+    # """Try alternative installation methods."""
+    # logger.info(f"Trying alternative installation for {package_name}...")
     
-    # Map package names to system packages
-    system_packages = {
-        "opencv-python": "python3-opencv",
-        "numpy": "python3-numpy", 
-        "psutil": "python3-psutil",
-        "pyudev": "python3-pyudev"
-    }
+    # # Map package names to system packages
+    # system_packages = {
+    #     "opencv-python": "python3-opencv",
+    #     "numpy": "python3-numpy", 
+    #     "psutil": "python3-psutil",
+    #     "pyudev": "python3-pyudev"
+    # }
     
-    if package_name in system_packages:
-        try:
-            system_pkg = system_packages[package_name]
-            logger.info(f"Installing {system_pkg} via apt...")
-            subprocess.run(["sudo", "apt", "install", "-y", system_pkg], 
-                          check=True, capture_output=True)
-            logger.info(f"Successfully installed {system_pkg}")
-            return True
-        except subprocess.CalledProcessError:
-            logger.error(f"Failed to install {system_pkg} via apt")
+    # if package_name in system_packages:
+    #     try:
+    #         system_pkg = system_packages[package_name]
+    #         logger.info(f"Installing {system_pkg} via apt...")
+    #         subprocess.run(["sudo", "apt", "install", "-y", system_pkg], 
+    #                       check=True, capture_output=True)
+    #         logger.info(f"Successfully installed {system_pkg}")
+    #         return True
+    #     except subprocess.CalledProcessError:
+    #         logger.error(f"Failed to install {system_pkg} via apt")
     
     return False
+
+def import_rknnlite_class():
+    """Import RKNNLite from the concrete module that exports it."""
+    from importlib import import_module
+    return import_module("rknnlite.api.rknn_lite").RKNNLite
+
+def install_librknnrt_library():
+    """Install librknnrt.so into /usr/lib, preferring a local copy."""
+    local_library = os.path.join("installation", "librknnrt.so")
+    library_url = "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/master/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so"
+    destination_library = "/usr/lib/librknnrt.so"
+
+    try:
+        if not os.path.exists(local_library):
+            logger.info("Downloading librknnrt.so...")
+            if not os.path.exists("installation"):
+                os.makedirs("installation")
+            download_file(library_url, local_library)
+
+        if not os.path.exists(local_library):
+            logger.warning("librknnrt.so was not found and could not be downloaded")
+            return False
+
+        logger.info("Installing librknnrt.so to /usr/lib/")
+        subprocess.run(["sudo", "install", "-m", "755", local_library, destination_library], check=True)
+        subprocess.run(["sudo", "ldconfig"], check=True)
+        logger.info("Successfully installed librknnrt.so")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to install librknnrt.so: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error installing librknnrt.so: {e}")
+        return False
 
 def install_rknn_wheel():
     """Install RKNN toolkit by detecting Python version and downloading the correct wheel."""
@@ -150,13 +184,13 @@ def install_rknn_wheel():
     if not install_pip_if_missing():
         return False
     
-    # Check if already installed
+    # Check if RKNNLite can actually be imported, not just the top-level package.
     try:
-        importlib.import_module("rknnlite")
-        logger.info("rknnlite is already installed")
+        import_rknnlite_class()
+        logger.info("RKNNLite is already installed and importable")
         return True
-    except ImportError:
-        pass
+    except Exception as e:
+        logger.warning(f"RKNNLite import check failed: {e}")
     
     # First check if local wheel exists and matches our Python version
     local_wheel_pattern = f"installation/rknn_toolkit_lite2-2.3.2-cp{python_version.replace('.', '')}-cp{python_version.replace('.', '')}"
@@ -168,12 +202,24 @@ def install_rknn_wheel():
                 if local_wheel_pattern in file:
                     logger.info(f"Found compatible local wheel: {file}")
                     try:
-                        cmd = [sys.executable, "-m", "pip", "install", os.path.join("installation", file)]
+                        cmd = [
+                            sys.executable,
+                            "-m",
+                            "pip",
+                            "install",
+                            "--force-reinstall",
+                            "--no-cache-dir",
+                            "--no-deps",
+                            os.path.join("installation", file),
+                        ]
                         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                        import_rknnlite_class()
                         logger.info("Successfully installed RKNN toolkit from local wheel")
                         return True
                     except subprocess.CalledProcessError as e:
                         logger.warning(f"Failed to install local wheel: {e}")
+                    except Exception as e:
+                        logger.warning(f"RKNN verification failed after local wheel install: {e}")
     
     # Download the correct wheel for our Python version
     wheel_url = RKNN_WHEELS[python_version]
@@ -194,9 +240,19 @@ def install_rknn_wheel():
     
     # Install the downloaded wheel
     try:
-        cmd = [sys.executable, "-m", "pip", "install", wheel_path]
+        cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--no-cache-dir",
+            "--no-deps",
+            wheel_path,
+        ]
         logger.info("Installing RKNN toolkit from downloaded wheel...")
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        import_rknnlite_class()
         logger.info("Successfully installed RKNN toolkit")
         
         # Clean up downloaded file
@@ -213,10 +269,20 @@ def install_rknn_wheel():
         
         # Try forcing installation ignoring platform checks as fallback
         try:
-            cmd = [sys.executable, "-m", "pip", "install", wheel_path, 
-                   "--force-reinstall", "--no-deps", "--no-warn-script-location"]
+            cmd = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                wheel_path,
+                "--force-reinstall",
+                "--no-deps",
+                "--no-cache-dir",
+                "--no-warn-script-location",
+            ]
             logger.info("Attempting forced installation...")
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            import_rknnlite_class()
             logger.info("Successfully installed RKNN toolkit (forced)")
             
             # Clean up downloaded file
@@ -245,7 +311,7 @@ def check_and_install_dependencies():
     # List of dependencies to check
     dependencies = [
         ("cv2", "opencv-python"),
-        ("numpy", "numpy"),
+        ("numpy", "numpy<2.0.0"),
         ("psutil", "psutil"),
         ("pyudev", "pyudev"),
     ]
@@ -270,6 +336,9 @@ def check_and_install_dependencies():
     if not check_module("rknnlite"):
         logger.info("RKNN toolkit not found, attempting to install from wheel...")
         install_rknn_wheel()
+
+    # Ensure the RKNN runtime shared library is installed system-wide
+    install_librknnrt_library()
     
     # Final verification
     logger.info("\n=== Verifying Installation ===")

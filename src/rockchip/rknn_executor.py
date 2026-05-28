@@ -1,7 +1,6 @@
 """RKNNLite executor for on-device Rockchip inference."""
 
-from rknnlite.api import RKNNLite
-
+from rknnlite.api.rknn_lite import RKNNLite
 
 class RKNN_model_container:
     def __init__(self, model_path, target=None, device_id=None):

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """dependency_manager.py
 Automatic dependency management for YOLO RKNN/NPU project
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import sys
@@ -81,23 +81,22 @@ def check_and_install_dependencies():
 def check_rknn_availability():
     """Check if RKNN is available and try to install if not."""
     try:
-        import rknnlite
+        from rknnlite.api import RKNNLite  # noqa: F401
         print("[INFO] RKNN toolkit is available.")
         return True
-    except ImportError:
+    except Exception:
         print("[WARNING] RKNN toolkit not available, attempting installation...")
         try:
-            installer_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "install_dependencies.py")
             # Run only the RKNN installation part
             result = subprocess.run([sys.executable, "-c", 
                                    "import sys; sys.path.append('.'); from install_dependencies import install_rknn_wheel; install_rknn_wheel()"], 
                                   capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(__file__)))
             
             # Try importing again
-            import rknnlite
+            from rknnlite.api import RKNNLite  # noqa: F401
             print("[INFO] RKNN toolkit installed successfully!")
             return True
-        except (subprocess.CalledProcessError, ImportError):
+        except (subprocess.CalledProcessError, Exception):
             print("[WARNING] RKNN toolkit installation failed. Continuing in CPU mode.")
             return False
 

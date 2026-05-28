@@ -23,6 +23,17 @@ A project for comparison between CPU, GPU & NPU inference with **Web Interface**
 
 ## Quick Start
 
+### Installation (Recommended)
+To avoid conflicts with operating system packages (PEP 668), this project uses a virtual environment with Python 3.12.
+Simply run the automatic installation script:
+
+```bash
+git clone https://github.com/fcascan/PythonYoloRKNPU.git
+cd PythonYoloRKNPU
+chmod +x setup.sh
+./setup.sh
+```
+
 ### Console Mode (Traditional)
 ```bash
 git clone https://github.com/fcascan/PythonYoloRKNPU.git
