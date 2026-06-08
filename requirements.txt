@@ -16,3 +16,6 @@ eventlet>=0.33.0
 
 # ONNX runtime for CPU fallback
 onnxruntime>=1.15.0
+
+# NCNN runtime for GPU inference (Mali via Vulkan)
+ncnn>=1.0.20230223

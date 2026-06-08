@@ -53,17 +53,23 @@ def setup_inference_device(inference_device):
         return "CPU", False, {}
     
     elif inference_device == "GPU":
-        # GPU setup
-        if check_gpu_availability():
+        # check_gpu_availability() returns (bool, str) — unpack explicitly
+        gpu_ok, gpu_msg = check_gpu_availability()
+        if gpu_ok:
             try:
-                import cv2
-                # Test GPU functionality
-                test_mat = cv2.cuda_GpuMat()
+                import ncnn as pyncnn
+                net = pyncnn.Net()
+                net.opt.use_vulkan_compute = True
+                del net
                 print("[INFO] GPU acceleration available and functional.")
                 return "GPU", True, {"gpu_available": True}
+            except ImportError:
+                print("[WARNING] ncnn package not installed — GPU requires: pip install ncnn")
             except Exception as e:
-                print(f"[WARNING] GPU setup failed: {e}")
-        
+                print(f"[WARNING] GPU/Vulkan setup failed: {e}")
+        else:
+            print(f"[WARNING] GPU check failed: {gpu_msg}")
+
         print("[INFO] GPU not available, switching to CPU inference mode...")
         return "CPU", False, {}
     

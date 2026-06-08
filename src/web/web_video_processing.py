@@ -59,7 +59,7 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             break
 
         start_inf = time.time()
-        boxes, classes, scores, _ = engine.detect_objects(frame)
+        boxes, classes, scores, _ = engine.detect_objects(frame, stream_idx=idx, frame_idx=total_frames + 1)
         inf_time = time.time() - start_inf
         total_frame_ms = (time.time() - frame_start) * 1000
 
