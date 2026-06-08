@@ -122,6 +122,12 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
 
 def process_video_web(yolo_postprocess_func=None, web_server=None):
     """Process benchmark video files — one thread per stream for parallel NPU execution."""
+    from ..core import config as _cfg
+    INFERENCE_DEVICE = _cfg.INFERENCE_DEVICE
+    NPU_CORE_ASSIGNMENT = _cfg.NPU_CORE_ASSIGNMENT
+    VIDEO_FILE_PATHS = _cfg.VIDEO_FILE_PATHS
+    MAX_INFERENCE_INSTANCES = _cfg.MAX_INFERENCE_INSTANCES
+
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
 
