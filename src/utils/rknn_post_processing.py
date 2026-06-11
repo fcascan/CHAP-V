@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """rknn_post_processing.py
-by fcascan 2025
+by fcascan 2026
 """
 import numpy as np
 from ..core.config import *
-from rknnlite.api import RKNNLite
+from rknnlite.api.rknn_lite import RKNNLite
 
 # Adjust for tasks (taken from yolov8 default cfg)
 OBJ_THRESH = 0.25

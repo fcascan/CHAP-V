@@ -87,7 +87,7 @@ class YOLO11InferenceEngine:
             pad_color=(0, 0, 0),
         )
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.platform in ('pytorch', 'onnx'):
+        if self.platform in ('pytorch', 'onnx', 'ncnn'):
             input_data = img.transpose((2, 0, 1))
             input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
             input_data = input_data / 255.
@@ -132,7 +132,15 @@ class YOLO11InferenceEngine:
             
         try:
             logging.debug(f"Starting postprocessing with {len(outputs)} output tensors")
-            boxes, classes, scores = rockchip_yolo.post_process(outputs)
+            if self.platform == 'ncnn':
+                if len(outputs) == 1:
+                    # pnnx format: single decoded [nc+4, 8400] blob
+                    boxes, classes, scores = rockchip_yolo.post_process_ncnn(outputs)
+                else:
+                    # onnx2ncnn format: 9 raw FPN blobs — same layout as ONNX/CPU
+                    boxes, classes, scores = rockchip_yolo.post_process(outputs)
+            else:
+                boxes, classes, scores = rockchip_yolo.post_process(outputs)
             if boxes is not None:
                 logging.debug(f"Postprocessing successful: {len(boxes)} detections")
             else:
@@ -143,13 +151,15 @@ class YOLO11InferenceEngine:
             logging.error(f"Output info: {[o.shape if hasattr(o, 'shape') else type(o) for o in outputs]}")
             return None, None, None
     
-    def detect_objects(self, frame):
+    def detect_objects(self, frame, stream_idx=None, frame_idx=None):
         """
         Complete object detection pipeline: preprocess -> inference -> postprocess.
-        
+
         Args:
             frame: Input OpenCV frame (BGR format)
-            
+            stream_idx: Optional stream/camera index for log labelling.
+            frame_idx: Optional frame number for log labelling.
+
         Returns:
             Tuple of (boxes, classes, scores, processed_frame)
             boxes: Array of bounding boxes in original frame coordinates
@@ -159,23 +169,32 @@ class YOLO11InferenceEngine:
         """
         if app_config.DEBUG_MODE:
             logging.debug(f"YOLO11 processing frame: {frame.shape}")
-        
+
+        # Build a short label used in all detection prints for this call.
+        if stream_idx is not None and frame_idx is not None:
+            self._frame_label = f"S{stream_idx}/F{frame_idx}"
+        elif frame_idx is not None:
+            self._frame_label = f"F{frame_idx}"
+        else:
+            self._frame_label = None
+
         # Preprocess
         input_data = self.preprocess_frame(frame)
-        
+
         # Inference
         outputs = self.run_inference(input_data)
-        
+
         # Postprocess
         boxes, classes, scores = self.postprocess_outputs(outputs)
-        
+
         # Show detection results
         if boxes is not None:
             summary = self.get_detection_summary(boxes, classes, scores)
-            print(f"[DETECTIONS] Classes found: {summary['class_counts']}")
+            label_str = f" [{self._frame_label}]" if self._frame_label else ""
+            print(f"[DETECTIONS]{label_str} Classes found: {summary['class_counts']}")
             if app_config.DEBUG_MODE:
                 logging.debug(f"Detection result: {len(boxes)} objects found")
-        
+
         # Convert boxes back to original frame coordinates
         if boxes is not None:
             real_boxes = self.coco_helper.get_real_box(boxes)
@@ -186,18 +205,19 @@ class YOLO11InferenceEngine:
     def draw_detections(self, frame, boxes, classes, scores):
         """
         Draw detection results on frame using the Rockchip draw function.
-        
+
         Args:
             frame: OpenCV frame to draw on
             boxes: Detection bounding boxes
-            classes: Detection class indices  
+            classes: Detection class indices
             scores: Detection confidence scores
-            
+
         Returns:
             Frame with detections drawn
         """
         if boxes is not None and classes is not None and scores is not None:
-            rockchip_yolo.draw(frame, boxes, scores, classes)
+            rockchip_yolo.draw(frame, boxes, scores, classes,
+                               frame_label=getattr(self, '_frame_label', None))
         return frame
     
     def get_detection_summary(self, boxes, classes, scores, score_threshold=0.5):
@@ -274,7 +294,10 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
     if device_type == "NPU":
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
-    elif device_type in ["GPU", "CPU"]:
+    elif device_type == "GPU":
+        model_path = app_config.NCNN_MODEL_PATH
+        platform = app_config.ROCKCHIP_TARGET
+    elif device_type == "CPU":
         model_path = app_config.ONNX_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     else:

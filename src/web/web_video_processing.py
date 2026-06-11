@@ -59,7 +59,7 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             break
 
         start_inf = time.time()
-        boxes, classes, scores, _ = engine.detect_objects(frame)
+        boxes, classes, scores, _ = engine.detect_objects(frame, stream_idx=idx, frame_idx=total_frames + 1)
         inf_time = time.time() - start_inf
         total_frame_ms = (time.time() - frame_start) * 1000
 
@@ -122,6 +122,12 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
 
 def process_video_web(yolo_postprocess_func=None, web_server=None):
     """Process benchmark video files — one thread per stream for parallel NPU execution."""
+    from ..core import config as _cfg
+    INFERENCE_DEVICE = _cfg.INFERENCE_DEVICE
+    NPU_CORE_ASSIGNMENT = _cfg.NPU_CORE_ASSIGNMENT
+    VIDEO_FILE_PATHS = _cfg.VIDEO_FILE_PATHS
+    MAX_INFERENCE_INSTANCES = _cfg.MAX_INFERENCE_INSTANCES
+
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
 

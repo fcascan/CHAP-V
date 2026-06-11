@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """system_setup.py
 System setup and configuration for YOLO RKNN/NPU project
-by fcascan 2025
+by fcascan 2026
 """
 import sys
 import logging
 from .dependency_manager import check_and_install_dependencies, check_rknn_availability, check_gpu_availability, ensure_root_permissions, require_root_permissions
-
 
 def setup_system():
     """Complete system setup including dependencies and permissions."""
@@ -41,7 +40,8 @@ def setup_inference_device(inference_device):
         # NPU setup
         if check_rknn_availability():
             try:
-                from rknnlite.api import RKNNLite
+                from importlib import import_module
+                RKNNLite = import_module("rknnlite.api.rknn_lite").RKNNLite
                 from src.utils.rknn_post_processing import post_process
                 from src.utils.my_htop import log_npu_usage
                 print("[INFO] RKNN NPU libraries loaded successfully.")
@@ -53,17 +53,23 @@ def setup_inference_device(inference_device):
         return "CPU", False, {}
     
     elif inference_device == "GPU":
-        # GPU setup
-        if check_gpu_availability():
+        # check_gpu_availability() returns (bool, str) — unpack explicitly
+        gpu_ok, gpu_msg = check_gpu_availability()
+        if gpu_ok:
             try:
-                import cv2
-                # Test GPU functionality
-                test_mat = cv2.cuda_GpuMat()
+                import ncnn as pyncnn
+                net = pyncnn.Net()
+                net.opt.use_vulkan_compute = True
+                del net
                 print("[INFO] GPU acceleration available and functional.")
                 return "GPU", True, {"gpu_available": True}
+            except ImportError:
+                print("[WARNING] ncnn package not installed — GPU requires: pip install ncnn")
             except Exception as e:
-                print(f"[WARNING] GPU setup failed: {e}")
-        
+                print(f"[WARNING] GPU/Vulkan setup failed: {e}")
+        else:
+            print(f"[WARNING] GPU check failed: {gpu_msg}")
+
         print("[INFO] GPU not available, switching to CPU inference mode...")
         return "CPU", False, {}
     

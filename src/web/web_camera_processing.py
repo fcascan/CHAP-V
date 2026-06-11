@@ -70,7 +70,7 @@ def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output
             logging.debug(f"[DEBUG] Camera {idx} processing frame {total_frames + 1}")
 
         start_inf = time.time()
-        boxes, classes, scores, _ = engine.detect_objects(frame)
+        boxes, classes, scores, _ = engine.detect_objects(frame, stream_idx=idx, frame_idx=total_frames + 1)
         inf_time = time.time() - start_inf
         total_frame_ms = (time.time() - frame_start) * 1000
 
@@ -133,6 +133,11 @@ def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output
 
 def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     """Process cameras — one thread per camera for parallel NPU execution."""
+    from ..core import config as _cfg
+    INFERENCE_DEVICE = _cfg.INFERENCE_DEVICE
+    NPU_CORE_ASSIGNMENT = _cfg.NPU_CORE_ASSIGNMENT
+    MAX_INFERENCE_INSTANCES = _cfg.MAX_INFERENCE_INSTANCES
+
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
 

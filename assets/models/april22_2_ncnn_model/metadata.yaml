@@ -1,0 +1,20 @@
+description: Ultralytics YOLO11s model trained on /content/dataset/data.yaml
+author: Ultralytics
+date: '2026-06-09T22:58:32.165620'
+version: 8.4.63
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: pistol
+  1: knife
+args:
+  batch: 1
+  half: false
+channels: 3
+end2end: false
