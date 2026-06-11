@@ -28,19 +28,49 @@
 #     Cost: roughly 20 % lower throughput vs fp16.
 #     These options must be set before load_param() to take effect.
 #
-# [3] NCNN output format for YOLO11 (pnnx export)
-#     The exported model produces a single blob named "out0" with shape
-#     [nc+4, 8400] where:
-#       rows 0-3   : box coords cx, cy, w, h in pixel space (already DFL-decoded)
-#       rows 4-end : per-class confidences, already sigmoided
-#     The 8400 anchors are ordered by stride:
-#       0    – 6399  : stride-8  (P3, 80×80 grid, small objects)
-#       6400 – 7999  : stride-16 (P4, 40×40 grid, medium objects)
-#       8000 – 8399  : stride-32 (P5, 20×20 grid, large objects)
-#     The blob name and layout are fixed by the pnnx NCNN export and match
-#     what post_process_ncnn() in src/rockchip/yolo11_infer.py expects.
+# [3] NCNN output format — two variants depending on conversion tool
 #
-# [4] NCNN model export bug — broken class head for stride-8/16 (pnnx issue)
+#     Variant A — pnnx export (Ultralytics default):
+#       Single blob "out0", shape [nc+4, 8400]:
+#         rows 0-3   : cx, cy, w, h in pixel space (DFL-decoded inside model)
+#         rows 4-end : per-class confidences, sigmoided
+#       Anchor ordering: stride-8 [0–6399], stride-16 [6400–7999], stride-32 [8000–8399]
+#       Handled by: post_process_ncnn() in src/rockchip/yolo11_infer.py
+#       Detected by: "out0" appears in the .param file
+#
+#     Variant B — onnx2ncnn conversion (recommended, avoids bugs in [4] and [5]):
+#       9 output blobs matching the ONNX model graph.output tensors:
+#         [1, 64, 80, 80]  stride-8  DFL raw (16 bins × 4 sides)
+#         [1,  2, 80, 80]  stride-8  class scores
+#         [1,  1, 80, 80]  stride-8  objectness
+#         [1, 64, 40, 40]  stride-16 DFL raw
+#         [1,  2, 40, 40]  stride-16 class scores
+#         [1,  1, 40, 40]  stride-16 objectness
+#         [1, 64, 20, 20]  stride-32 DFL raw
+#         [1,  2, 20, 20]  stride-32 class scores
+#         [1,  1, 20, 20]  stride-32 objectness
+#       Input blob name: "images"  (from ONNX graph.input)
+#       Handled by: post_process() in src/rockchip/yolo11_infer.py (same as CPU/ONNX)
+#       Detected by: "out0" absent; input blob is "images"
+#
+#     NCNN_model_container auto-detects the variant from the .param file at load
+#     time and exposes it via self.model_format ('pnnx' or 'onnx2ncnn').
+#     postprocess_outputs() in yolo11_inference.py routes accordingly.
+#
+# [4] NCNN model export bug — wrong anchor_x encoding (pnnx issue)
+#     Confirmed by inspecting model.ncnn.param: the dist2bbox section uses blobs
+#     309/310 as anchor x-coordinates.  After export, the stored values have a
+#     wrong step size (~64px per grid cell instead of the correct 32px for
+#     stride-32).  As a result, cx for stride-32 anchors exceeds 640px
+#     (observed: 870–1057 for anchors whose correct cx is 304–400).  When
+#     post_process_ncnn() computes x1=cx−w/2, both x1 and x2 exceed the frame
+#     width, clip to the right edge, and produce zero-area boxes.  The cy / h
+#     values are unaffected (anchor_y is stored correctly).
+#     Fix: the zero-area boxes are now discarded in post_process_ncnn() before
+#     NMS.  But detections are effectively suppressed until the model is
+#     re-exported correctly.
+#
+# [5] NCNN model export bug — broken class head for stride-8/16 (pnnx issue)
 #     When exporting YOLO11 with `yolo export format=ncnn`, pnnx converts through
 #     a PNNX IR stage.  On some Ultralytics versions this breaks the Concat node
 #     that assembles class scores from all three FPN levels: the cv3 class branches
@@ -61,12 +91,12 @@
 #          Note: onnx2ncnn produces per-scale blobs (not the single "out0"
 #          tensor), so post_process_ncnn() would need to be adapted.
 #
-# [5] pyncnn API compatibility
+# [6] pyncnn API compatibility
 #     Older pyncnn builds (pre-2023) may not expose set_vulkan_device() or
 #     get_gpu_info().  The constructor handles this with AttributeError fallbacks.
 #     Minimum recommended version: ncnn>=1.0.20230223 (installable via pip).
 #
-# [6] Input tensor layout
+# [7] Input tensor layout
 #     Input must be [3, H, W] float32 (CHW, NOT batch-first) when passed to
 #     pyncnn.Mat().  The batch dimension [1, 3, H, W] must be removed before
 #     constructing the Mat.  pyncnn.Mat(chw_array).clone() is used to ensure
@@ -81,16 +111,80 @@ import numpy as np
 _ncnn_diag_done = False
 
 
+def _parse_ncnn_model_format(param_file):
+    """
+    Parse an NCNN .param file and return (model_format, input_blob, output_blobs).
+
+    model_format:  'pnnx'      — Ultralytics pnnx export; single 'out0' blob
+                   'onnx2ncnn' — onnx2ncnn conversion; 9 FPN output blobs
+    input_blob:    name of the network's input blob ('in0' or 'images')
+    output_blobs:  ordered list of network output blob names
+    """
+    all_outputs = []
+    all_inputs_seen = set()
+    input_layer_blobs = []
+
+    with open(param_file, 'r') as f:
+        lines = f.readlines()
+
+    for line in lines[2:]:       # skip magic + counts header
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        layer_type = parts[0]
+        try:
+            num_in  = int(parts[2])
+            num_out = int(parts[3])
+        except ValueError:
+            continue
+
+        in_start  = 4
+        out_start = in_start + num_in
+
+        for i in range(num_in):
+            idx = in_start + i
+            if idx < len(parts) and '=' not in parts[idx]:
+                all_inputs_seen.add(parts[idx])
+        for i in range(num_out):
+            idx = out_start + i
+            if idx < len(parts) and '=' not in parts[idx]:
+                all_outputs.append(parts[idx])
+
+        if layer_type == 'Input':
+            for i in range(num_out):
+                idx = out_start + i
+                if idx < len(parts) and '=' not in parts[idx]:
+                    input_layer_blobs.append(parts[idx])
+
+    # Network outputs are blobs that are produced but never consumed.
+    net_outputs = [b for b in all_outputs if b not in all_inputs_seen]
+
+    if 'out0' in net_outputs:
+        fmt = 'pnnx'
+        in_blob = input_layer_blobs[0] if input_layer_blobs else 'in0'
+    else:
+        fmt = 'onnx2ncnn'
+        in_blob = input_layer_blobs[0] if input_layer_blobs else 'images'
+
+    return fmt, in_blob, net_outputs
+
+
 class NCNN_model_container:
     """
     NCNN model container with optional Vulkan GPU acceleration.
 
-    Expected input:  list containing one numpy array of shape [1, 3, H, W]
-                     float32 normalised to [0, 1] (CHW, batch-first).
-    Expected output: list containing one numpy array of shape [nc+4, 8400]
-                     — first 4 rows are decoded box coords (cx, cy, w, h) in
-                     pixel space; remaining rows are class confidences
-                     (already sigmoided, one row per class).
+    Supports two model formats (auto-detected from the .param file):
+
+    pnnx (Ultralytics export):
+      Input:  list[ndarray[1,3,H,W] float32]
+      Output: list[ndarray[nc+4, 8400]] — decoded boxes + sigmoided class scores
+
+    onnx2ncnn (ONNX → onnx2ncnn conversion, recommended):
+      Input:  list[ndarray[1,3,H,W] float32]
+      Output: list of 9 ndarray[1,ch,H,W] — raw FPN tensors matching ONNX output;
+              compatible with post_process() in yolo11_infer.py (same as CPU mode)
+
+    Use self.model_format ('pnnx' or 'onnx2ncnn') to pick the right postprocess call.
     """
 
     def __init__(self, model_dir, use_vulkan=True):
@@ -122,6 +216,12 @@ class NCNN_model_container:
         bin_file = param_file[:-len(".param")] + ".bin"
         if not os.path.exists(bin_file):
             raise FileNotFoundError(f"NCNN .bin file not found: {bin_file}")
+
+        # Detect model format from param topology.
+        self.model_format, self._input_blob, self._output_blobs = \
+            _parse_ncnn_model_format(param_file)
+        print(f"[INFO] NCNN model format: {self.model_format}  "
+              f"input={self._input_blob}  outputs={self._output_blobs}")
 
         self.net = pyncnn.Net()
         self.net.opt.use_vulkan_compute = use_vulkan
@@ -174,69 +274,105 @@ class NCNN_model_container:
         if ret != 0:
             raise RuntimeError(f"Failed to load NCNN model: {bin_file} (ret={ret})")
 
+    def _prepare_input(self, input_datas):
+        """Remove batch dim and ensure float32. Returns (inp_chw, mat)."""
+        pyncnn = self._pyncnn
+        inp = input_datas[0]
+        if inp.ndim == 4:
+            inp = inp[0]                    # [1,3,H,W] → [3,H,W]
+        if inp.dtype != np.float32:
+            inp = inp.astype(np.float32)
+        mat_in = pyncnn.Mat(inp).clone()    # Mat owns its data (no dangling view)
+        return inp, mat_in
+
     def run(self, input_datas):
         """
-        Run NCNN inference.
+        Run NCNN inference.  Dispatches to the correct format handler.
 
         Args:
             input_datas: list with one numpy array, shape [1, 3, H, W] float32.
 
         Returns:
-            list with one numpy array of shape [nc+4, 8400].
+            pnnx:      list[ndarray[nc+4, 8400]]  — decoded boxes + class scores
+            onnx2ncnn: list of 9 ndarray[1,ch,H,W] — raw FPN tensors (same as
+                       onnx_executor.run() output, compatible with post_process())
         """
+        if self.model_format == 'pnnx':
+            return self._run_pnnx(input_datas)
+        else:
+            return self._run_onnx2ncnn(input_datas)
+
+    def _run_pnnx(self, input_datas):
+        """Handle the pnnx single-blob output format."""
         global _ncnn_diag_done
 
-        pyncnn = self._pyncnn
-        inp = input_datas[0]
-
-        # Remove batch dimension: [1, 3, H, W] → [3, H, W]
-        if inp.ndim == 4:
-            inp = inp[0]
-        if inp.dtype != np.float32:
-            inp = inp.astype(np.float32)
-
-        # ncnn.Mat(chw_array) creates a 3-D Mat (c, h, w) from a CHW numpy array
-        mat_in = pyncnn.Mat(inp).clone()
+        inp, mat_in = self._prepare_input(input_datas)
 
         with self.net.create_extractor() as ex:
-            ex.input("in0", mat_in)
+            ex.input(self._input_blob, mat_in)
             ret, out0 = ex.extract("out0")
             if ret != 0:
                 raise RuntimeError(f"NCNN inference failed (ret={ret})")
 
         output = np.array(out0)
 
-        # One-time diagnostic: input sanity-check + raw output shape/ranges.
+        # One-time diagnostic.
         if not _ncnn_diag_done:
             _ncnn_diag_done = True
-
-            # ── Input stats ──────────────────────────────────────────────────
             print(f"[NCNN DIAG] Input: shape={inp.shape}  dtype={inp.dtype}  "
                   f"range=[{inp.min():.4f}, {inp.max():.4f}]  "
                   f"mean={inp.mean():.4f}  non-zero={int((inp > 0).sum())}")
-
-            # ── Output stats ─────────────────────────────────────────────────
-            print(f"[NCNN DIAG] Output: shape={output.shape}  dtype={output.dtype}  "
+            print(f"[NCNN DIAG] Output (pnnx): shape={output.shape}  "
+                  f"dtype={output.dtype}  "
                   f"global range=[{output.min():.4f}, {output.max():.4f}]")
             if output.ndim == 2:
-                print(f"[NCNN DIAG] Per-row statistics (row = feature channel):")
                 for i in range(output.shape[0]):
                     row_label = (
-                        ["cx", "cy", "w", "h"] + [f"score_cls{j}" for j in range(output.shape[0]-4)]
-                    )[i] if i < output.shape[0] else f"row{i}"
+                        ["cx", "cy", "w", "h"]
+                        + [f"score_cls{j}" for j in range(output.shape[0] - 4)]
+                    )[i]
                     print(f"[NCNN DIAG]   row[{i}] {row_label:12s}: "
                           f"min={output[i].min():.4f}  max={output[i].max():.4f}  "
                           f"mean={output[i].mean():.4f}  "
                           f"non-zero={int((output[i] != 0).sum())}")
-            elif output.ndim == 3:
-                print(f"[NCNN DIAG] 3-D output (unexpected) shape={output.shape}:")
-                for i in range(min(output.shape[0], 8)):
-                    print(f"[NCNN DIAG]   ch[{i}]: "
-                          f"min={output[i].min():.4f}  max={output[i].max():.4f}")
-            else:
-                print(f"[NCNN DIAG] Unexpected ndim={output.ndim}")
 
         return [output]
+
+    def _run_onnx2ncnn(self, input_datas):
+        """
+        Handle the onnx2ncnn 9-blob output format.
+
+        Returns a list of 9 numpy arrays shaped [1, ch, H, W], matching the
+        output of onnx_executor.run() so that post_process() works unchanged.
+        """
+        global _ncnn_diag_done
+
+        inp, mat_in = self._prepare_input(input_datas)
+        results = []
+
+        with self.net.create_extractor() as ex:
+            ex.input(self._input_blob, mat_in)
+            for blob_name in self._output_blobs:
+                ret, out = ex.extract(blob_name)
+                if ret != 0:
+                    raise RuntimeError(
+                        f"NCNN failed to extract blob '{blob_name}' (ret={ret})"
+                    )
+                arr = np.array(out)
+                results.append(arr[np.newaxis])  # [ch,H,W] → [1,ch,H,W]
+
+        # One-time diagnostic.
+        if not _ncnn_diag_done:
+            _ncnn_diag_done = True
+            print(f"[NCNN DIAG] Input: shape={inp.shape}  dtype={inp.dtype}  "
+                  f"range=[{inp.min():.4f}, {inp.max():.4f}]  "
+                  f"mean={inp.mean():.4f}  non-zero={int((inp > 0).sum())}")
+            print(f"[NCNN DIAG] Output (onnx2ncnn): {len(results)} blobs")
+            for name, arr in zip(self._output_blobs, results):
+                print(f"[NCNN DIAG]   {name}: shape={arr.shape}  "
+                      f"range=[{arr.min():.4f}, {arr.max():.4f}]")
+
+        return results
 
     def release(self):
         if self.net is not None:

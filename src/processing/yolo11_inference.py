@@ -133,7 +133,12 @@ class YOLO11InferenceEngine:
         try:
             logging.debug(f"Starting postprocessing with {len(outputs)} output tensors")
             if self.platform == 'ncnn':
-                boxes, classes, scores = rockchip_yolo.post_process_ncnn(outputs)
+                if len(outputs) == 1:
+                    # pnnx format: single decoded [nc+4, 8400] blob
+                    boxes, classes, scores = rockchip_yolo.post_process_ncnn(outputs)
+                else:
+                    # onnx2ncnn format: 9 raw FPN blobs — same layout as ONNX/CPU
+                    boxes, classes, scores = rockchip_yolo.post_process(outputs)
             else:
                 boxes, classes, scores = rockchip_yolo.post_process(outputs)
             if boxes is not None:

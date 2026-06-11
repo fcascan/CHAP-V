@@ -2,6 +2,7 @@
 # Origin: https://github.com/airockchip/rknn_model_zoo
 # Path:   examples/yolo11/python/yolo11.py
 # License: Apache 2.0
+#
 # Modified from original:
 #   - OBJ_THRESH, NMS_THRESH, IMG_SIZE converted to CLI arguments
 #   - CLASSES loaded from --classes_file (text file) instead of hardcoded COCO list
@@ -10,13 +11,26 @@
 #   - sys.path manipulation removed (executors are co-located in the same directory)
 #   - --video_source added for video file and camera inference
 #   - press 'q' in the display window to stop video/camera inference
-# Project additions (not part of the original rknn_zoo library):
-#   - post_process_ncnn(): single-tensor NCNN/Vulkan GPU post-processing
-#   - _ncnn_stride_info(), _ncnn_det_diag_done, _ncnn_frame_count,
-#     _ncnn_det_count, _NCNN_SCORE_LOG_INTERVAL: per-frame NCNN diagnostics
-#   - draw(): optional frame_label parameter for per-frame log tagging
+#   - draw(): optional frame_label parameter added for per-frame log tagging
 #   - preprocess_frame(): 'ncnn' added to the CHW float32 branch
-#   - setup_model(): directory detection branch for NCNN model loading
+#   - setup_model(): directory detection branch added for NCNN model loading
+#     (uses src.processing.ncnn_executor.NCNN_model_container; import is relative
+#     to the project root, not the rknn_zoo examples directory)
+#
+# Project additions (not part of the original rknn_zoo library):
+#   - Imports: from src.core import config as app_config
+#              from src.utils.frame_overlay import calculate_recent_average_ms,
+#                  calculate_recent_fps, draw_processing_overlay
+#   - post_process_ncnn(): full NCNN/Vulkan GPU post-processing for the
+#     Ultralytics pnnx single-blob output format ([nc+4, 8400]).
+#     Includes degenerate-box filter: discards boxes with zero/negative width or
+#     height that arise from the pnnx anchor_x encoding bug (stored step ~64px
+#     vs correct 32px → cx > frame width → x1 and x2 both clip to right edge).
+#   - _ncnn_stride_info(): maps a flat anchor index (0-8399) to (stride, gx, gy)
+#   - Module-level NCNN diagnostic state: _ncnn_det_diag_done, _ncnn_frame_count,
+#     _ncnn_det_count, _NCNN_SCORE_LOG_INTERVAL
+#   - debug_detection_summary(): prints class counts and top scores when
+#     DEBUG_DETECTIONS is enabled; not present in original rknn_zoo script
 # =============================================================================
 
 import os
@@ -320,6 +334,7 @@ def post_process_ncnn(input_data):
             print(l)
     # ─────────────────────────────────────────────────────────────────────────
 
+    # Filter by score threshold.
     mask      = scores_all >= OBJ_THRESH
     boxes     = boxes_all[mask]
     class_ids = class_ids_all[mask]
@@ -327,6 +342,21 @@ def post_process_ncnn(input_data):
 
     if len(boxes) == 0:
         return None, None, None
+
+    # Discard degenerate boxes (zero or negative area).
+    # This can occur when the pnnx NCNN export stores anchor x-coordinates at the
+    # wrong scale, causing cx > image_width so that x1 and x2 both clip to the
+    # same value after get_real_box().  A zero-area box breaks NMS (IoU = -1 ≤
+    # NMS_THRESH → all duplicates survive) and produces garbage on screen.
+    valid = (boxes[:, 2] - boxes[:, 0] > 1) & (boxes[:, 3] - boxes[:, 1] > 1)
+    if not valid.any():
+        return None, None, None
+    if not valid.all():
+        print(f"[NCNN WARN] Discarding {int((~valid).sum())} degenerate box(es) "
+              f"(zero/negative area — likely anchor_x encoding bug in model export)")
+        boxes     = boxes[valid]
+        class_ids = class_ids[valid]
+        scores    = scores[valid]
 
     _ncnn_det_count += 1
 
