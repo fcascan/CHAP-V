@@ -1,7 +1,7 @@
 description: Ultralytics YOLO11s model trained on /content/dataset/data.yaml
 author: Ultralytics
-date: '2026-05-13T23:57:54.174737'
-version: 8.4.50
+date: '2026-06-24T03:22:04.015221'
+version: 8.4.75
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
 stride: 32

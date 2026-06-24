@@ -317,18 +317,31 @@ def post_process_ncnn(input_data):
     scores_all       = np.max(class_scores_all, axis=1)
 
     # ── Periodic score-distribution diagnostic (every N frames) ─────────────
+    # Logs the per-FPN-scale (stride 8/16/32) max class score and how many
+    # above-threshold anchors are in-frame vs off-frame.  This makes two failure
+    # modes visible at a glance:
+    #   * a whole stride band reading ~0  → dead class head (e.g. the ncnn
+    #     1.0.20260526 regression — see requirements.txt / README pin)
+    #   * many off-frame above-threshold anchors → stride-32 anchor-decode garbage
     if _ncnn_frame_count % _NCNN_SCORE_LOG_INTERVAL == 0:
+        _wl, _hl = IMG_SIZE[1], IMG_SIZE[0]
+        _inframe = (cx >= 0) & (cx <= _wl) & (cy >= 0) & (cy <= _hl)
+        _above = scores_all >= OBJ_THRESH
+        _s8, _s16, _s32 = scores_all[:6400], scores_all[6400:8000], scores_all[8000:]
         top5_idx = np.argsort(scores_all)[::-1][:5]
         lines = []
         for i in top5_idx:
             stride, gx, gy = _ncnn_stride_info(i)
             cls_name = CLASSES[int(class_ids_all[i])] if 0 <= int(class_ids_all[i]) < len(CLASSES) else str(class_ids_all[i])
+            _io = "in" if _inframe[i] else "OFF"
             lines.append(f"    anch={i} stride={stride} grid=({gx},{gy}) "
                          f"cx={cx[i]:.1f} cy={cy[i]:.1f} w={w[i]:.1f} h={h[i]:.1f} "
-                         f"cls={cls_name} score={scores_all[i]:.4f}")
+                         f"cls={cls_name} score={scores_all[i]:.4f} [{_io}-frame]")
         print(f"[NCNN SCORE LOG F#{_ncnn_frame_count}] "
               f"max_score={scores_all.max():.4f}  "
-              f"anchors_above_thresh={int((scores_all >= OBJ_THRESH).sum())}  "
+              f"per-stride max: s8={_s8.max():.3f} s16={_s16.max():.3f} s32={_s32.max():.3f}  "
+              f"above_thresh={int(_above.sum())} "
+              f"(in-frame={int((_above & _inframe).sum())}, off-frame={int((_above & ~_inframe).sum())})  "
               f"top-5 anchors:")
         for l in lines:
             print(l)
@@ -343,17 +356,35 @@ def post_process_ncnn(input_data):
     if len(boxes) == 0:
         return None, None, None
 
-    # Discard degenerate boxes (zero or negative area).
-    # This can occur when the pnnx NCNN export stores anchor x-coordinates at the
-    # wrong scale, causing cx > image_width so that x1 and x2 both clip to the
-    # same value after get_real_box().  A zero-area box breaks NMS (IoU = -1 ≤
-    # NMS_THRESH → all duplicates survive) and produces garbage on screen.
-    valid = (boxes[:, 2] - boxes[:, 0] > 1) & (boxes[:, 3] - boxes[:, 1] > 1)
+    # Discard off-frame and degenerate boxes.
+    # The NCNN/pnnx export of YOLO11 emits spurious stride-32 anchors whose decoded
+    # CENTER lands far outside the letterbox (observed cx≈1057 for a 640px input,
+    # w≈650).  Their raw width is positive, so a plain area test passes them, but
+    # after get_real_box() they collapse onto the frame edge — e.g. (638,0,638,360) —
+    # and draw as a garbage line.  Fix: drop any box whose center is outside the
+    # letterbox, and any box that is degenerate once clipped to the letterbox bounds.
+    W_lb, H_lb = IMG_SIZE[1], IMG_SIZE[0]
+    cx_b = (boxes[:, 0] + boxes[:, 2]) / 2.0
+    cy_b = (boxes[:, 1] + boxes[:, 3]) / 2.0
+    cl_x1 = np.clip(boxes[:, 0], 0, W_lb); cl_y1 = np.clip(boxes[:, 1], 0, H_lb)
+    cl_x2 = np.clip(boxes[:, 2], 0, W_lb); cl_y2 = np.clip(boxes[:, 3], 0, H_lb)
+    center_in = (cx_b >= 0) & (cx_b <= W_lb) & (cy_b >= 0) & (cy_b <= H_lb)
+    area_ok   = (cl_x2 - cl_x1 > 1) & (cl_y2 - cl_y1 > 1)
+    valid       = center_in & area_ok
+    n_drop_off  = int((~center_in).sum())
+    n_drop_area = int((center_in & ~area_ok).sum())
     if not valid.any():
+        # Throttle this message: with a weak model every frame can be all-garbage,
+        # which would flood the console. Log only on the periodic diagnostic tick.
+        if (n_drop_off or n_drop_area) and _ncnn_frame_count % _NCNN_SCORE_LOG_INTERVAL == 0:
+            print(f"[NCNN WARN] F#{_ncnn_frame_count}: all {len(boxes)} above-threshold "
+                  f"box(es) discarded: {n_drop_off} off-frame "
+                  f"(stride-32 anchor-decode garbage), {n_drop_area} degenerate.")
         return None, None, None
     if not valid.all():
-        print(f"[NCNN WARN] Discarding {int((~valid).sum())} degenerate box(es) "
-              f"(zero/negative area — likely anchor_x encoding bug in model export)")
+        print(f"[NCNN WARN] Discarding {int((~valid).sum())} box(es): "
+              f"{n_drop_off} off-frame (center outside letterbox), "
+              f"{n_drop_area} degenerate (zero area after clip).")
         boxes     = boxes[valid]
         class_ids = class_ids[valid]
         scores    = scores[valid]
@@ -493,6 +524,12 @@ def setup_model(args):
         platform = 'rknn'
         from rknn_executor import RKNN_model_container
         model = RKNN_model_container(args.model_path, args.target, args.device_id)
+    elif model_path.endswith('.onnx') and getattr(args, 'gpu_opencl', False):
+        # GPU mode: run the ONNX on the Mali-G610 via OpenCV-DNN + OpenCL.
+        # (ncnn+Vulkan mis-computes YOLO11 on this GPU — see opencv_executor.py.)
+        platform = 'opencv'
+        from src.processing.opencv_executor import OpenCV_OpenCL_model_container
+        model = OpenCV_OpenCL_model_container(args.model_path, use_opencl=True)
     elif model_path.endswith('.onnx'):
         platform = 'onnx'
         from onnx_executor import ONNX_model_container

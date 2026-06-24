@@ -116,10 +116,30 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 - **System Info**: Current status, processing mode, and frame availability
 - **Console Output**: Real-time logging with color-coded message levels
 
-## GPU Inference Setup (Mali-G610 + Vulkan)
+## GPU Inference (Mali-G610)
 
-GPU mode uses **ncnn** with the **Vulkan** backend to run inference on the Mali-G610 GPU.
-This requires two system-level prerequisites beyond the Python packages:
+**GPU mode runs the ONNX model on the Mali-G610 via OpenCV-DNN with the OpenCL target**
+(`DNN_BACKEND_OPENCV` + `DNN_TARGET_OPENCL`), decoded by the same `post_process()` as the
+CPU and NPU paths. It uses the same ONNX as CPU mode (`PATHS.model_onnx`), so the three
+processors run identical weights — no separate GPU model or conversion needed. OpenCL is
+provided by the Mali blob (`/etc/OpenCL/vendors/mali.icd`); nothing else to install
+(OpenCV is already a dependency).
+
+Observed: correct detections matching CPU/NPU, ~2.3–2.5 s/frame (~0.4 FPS) — slow, but a
+valid Mali-GPU data point. Confirmed running on the GPU (Mali load ~70–100% during inference).
+
+> **Why not ncnn+Vulkan for GPU?** ncnn numerically mis-computes YOLO11 on this Mali-G610:
+> the stride-8/16 class heads collapse to 0.0 on most frames and saturate to garbage on
+> others — reproduced identically on ncnn's CPU **and** Vulkan backends and across multiple
+> ncnn versions, while the same model runs correctly on the NPU and CPU. So the ncnn path is
+> retained only as a (non-functional) reference; the working GPU path is OpenCV-DNN/OpenCL.
+> See `src/processing/opencv_executor.py`.
+
+---
+
+### Legacy / experimental: ncnn + Vulkan (does NOT produce correct detections — see note above)
+
+The ncnn path needs two system-level prerequisites beyond the Python packages:
 
 ### 1. Mali Vulkan blob
 
@@ -151,14 +171,44 @@ EOF
 
 ### 3. ncnn model conversion (requires a PC with ultralytics)
 
+Use the **Ultralytics-native** ncnn export. It produces the standard YOLO11 head as a
+single decoded output blob (`out0`, shape `[1, 4+nc, 8400]`), which is what
+`post_process_ncnn()` consumes.
+
 ```bash
 # On a PC with Python + ultralytics installed:
-python3 -c "from ultralytics import YOLO; YOLO('your_model.pt').export(format='ncnn', imgsz=640)"
+python3 -c "from ultralytics import YOLO; YOLO('your_model.pt').export(format='ncnn', imgsz=640, half=False)"
 # Copy the generated *_ncnn_model/ directory to assets/models/
-# Update config.ini: model_ncnn = assets/models/your_model_ncnn_model/model.ncnn.param
+# Update config.ini: model_ncnn = assets/models/your_model_ncnn_model
 ```
 
+> Use `half=False` — fp16 weights degrade DFL/box regression on the Mali-G610.
+>
+> **Do NOT** feed the Rockchip RKNN-optimized ONNX (the 3-tensor-per-scale, 9-output
+> head) through `pnnx` for ncnn. That graph is mis-computed by stock ncnn on this
+> device (dead stride-8/16 class heads on Mali, and the CPU backend overflows). The
+> 9-output head is for the **NPU/RKNN** path only. For ncnn/GPU, always use the
+> native export above.
+
 > **setup.sh** handles steps 1 and 2 automatically if the .deb is present in `installation/`.
+
+### ⚠️ Required ncnn version (pinned)
+
+GPU mode is **pinned to `ncnn==1.0.20250503`** (see `requirements.txt`).
+
+`ncnn 1.0.20260526` contains a regression that **zeros the stride-8 / stride-16 class
+heads** of YOLO11 on this device: only large (stride-32) objects produce any class
+score, detections collapse, and bounding boxes look wrong. Confirmed on both the
+Mali-Vulkan and CPU backends with identical model files — i.e. it is a runtime bug, not
+a conversion or model problem. Version `1.0.20250503` computes all three FPN scales
+correctly. This only affects the Python `ncnn` package; it does **not** touch the
+system Mali/Vulkan blob.
+
+```bash
+# If GPU detections look wrong / only fire on huge boxes, check the version:
+venv/bin/python -c "import ncnn; print(ncnn.__version__)"   # must be 1.0.20250503
+venv/bin/pip install --no-cache-dir --no-deps 'ncnn==1.0.20250503'
+```
 
 ### Verify Vulkan detection
 

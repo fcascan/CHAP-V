@@ -18,4 +18,9 @@ eventlet>=0.33.0
 onnxruntime>=1.15.0
 
 # NCNN runtime for GPU inference (Mali via Vulkan)
-ncnn>=1.0.20230223
+# PINNED: 1.0.20260526 has a regression that zeros the stride-8/16 class heads of
+# YOLO11 on this device (only stride-32 fires -> wrong/garbage boxes), confirmed on
+# both Mali-Vulkan and CPU backends. 1.0.20250503 computes all FPN scales correctly.
+# Install with --no-deps so pip does not try to upgrade opencv/numpy (large wheels
+# that download corrupted on the OrangePi). See README "Required ncnn version".
+ncnn==1.0.20250503

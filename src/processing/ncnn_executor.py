@@ -159,7 +159,15 @@ def _parse_ncnn_model_format(param_file):
     # Network outputs are blobs that are produced but never consumed.
     net_outputs = [b for b in all_outputs if b not in all_inputs_seen]
 
-    if 'out0' in net_outputs:
+    # PNNX names network outputs out0, out1, ... regardless of how many there
+    # are, so the presence of 'out0' does NOT distinguish the two formats.
+    # Detect by output COUNT instead:
+    #   1 output  -> Ultralytics-style single decoded blob ([nc+4, 8400])
+    #   9 outputs -> Rockchip/raw multi-tensor (box/cls/sum per FPN scale)
+    # The old 'out0' name check misclassified the 9-blob PNNX-from-ONNX model as
+    # single-blob 'pnnx', so only out0 (a raw [1,64,H,W] box-reg tensor) was
+    # extracted and fed to post_process_ncnn() as if decoded -> garbage boxes.
+    if len(net_outputs) == 1:
         fmt = 'pnnx'
         in_blob = input_layer_blobs[0] if input_layer_blobs else 'in0'
     else:

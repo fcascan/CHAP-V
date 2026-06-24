@@ -31,16 +31,19 @@ class YOLO11InferenceEngine:
     yolo11 implementation while preserving the existing application API.
     """
     
-    def __init__(self, model_path, target_platform=None, device_id=None):
+    def __init__(self, model_path, target_platform=None, device_id=None, device_type=None):
         """
         Initialize YOLO11 inference engine.
-        
+
         Args:
             model_path: Path to the model file (.rknn, .onnx, or .pt)
             target_platform: Target NPU platform (e.g., 'rk3588', 'rk3566'). If None, uses ROCKCHIP_TARGET from config.
             device_id: Device ID for multi-device setups
+            device_type: "NPU" | "GPU" | "CPU". For GPU, an .onnx model is run on the
+                Mali-G610 via OpenCV-DNN + OpenCL (ncnn+Vulkan mis-computes YOLO11 here).
         """
         self.model_path = model_path
+        self.device_type = device_type
         app_config.reload_config()
         _sync_rockchip_runtime_config()
 
@@ -59,6 +62,7 @@ class YOLO11InferenceEngine:
                     model_path=model_path,
                     target=self.target_platform,
                     device_id=device_id,
+                    gpu_opencl=(device_type == "GPU"),
                 )
             )
             logging.info(f"YOLO11 model loaded: {model_path} on platform: {self.platform}")
@@ -87,7 +91,7 @@ class YOLO11InferenceEngine:
             pad_color=(0, 0, 0),
         )
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.platform in ('pytorch', 'onnx', 'ncnn'):
+        if self.platform in ('pytorch', 'onnx', 'ncnn', 'opencv'):
             input_data = img.transpose((2, 0, 1))
             input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
             input_data = input_data / 255.
@@ -295,7 +299,9 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "GPU":
-        model_path = app_config.NCNN_MODEL_PATH
+        # GPU runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
+        # (Same model as CPU; ncnn+Vulkan mis-computes YOLO11 on this GPU.)
+        model_path = app_config.ONNX_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "CPU":
         model_path = app_config.ONNX_MODEL_PATH
@@ -312,7 +318,7 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
     logging.info(f"Using {len(app_config.CLASSES)} custom classes from config")
     logging.info(f"Using detection thresholds: OBJ={app_config.OBJ_THRESHOLD}, NMS={app_config.NMS_THRESHOLD}")
 
-    return YOLO11InferenceEngine(model_path, platform, device_id=npu_core_id)
+    return YOLO11InferenceEngine(model_path, platform, device_id=npu_core_id, device_type=device_type)
 
 
 def yolo11_postprocess_wrapper(outputs, original_shape):
