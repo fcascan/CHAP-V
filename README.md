@@ -88,9 +88,9 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 ```
 
 ### Inference Devices
-- **NPU Mode**: `device = NPU` - Uses RKNN Lite API with RK3588 Neural Processing Unit
-- **GPU Mode**: `device = GPU` - Uses ncnn + Vulkan for Mali-G610 GPU (requires Mali Vulkan blob, see below)
-- **CPU Mode**: `device = CPU` - Uses ONNX Runtime with CPU backend
+- **NPU Mode**: `device = NPU` - Uses RKNN Lite API with the RK3588 Neural Processing Unit
+- **GPU Mode**: `device = GPU` - Runs the ONNX model on the Mali-G610 GPU via OpenCV-DNN + OpenCL (see [GPU Inference](#gpu-inference-mali-g610) below)
+- **CPU Mode**: `device = CPU` - Uses ONNX Runtime with the CPU backend
 
 ### Processing Modes
 - **Camera mode**: `benchmark_mode = false` - Live camera processing
@@ -120,118 +120,92 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 
 **GPU mode runs the ONNX model on the Mali-G610 via OpenCV-DNN with the OpenCL target**
 (`DNN_BACKEND_OPENCV` + `DNN_TARGET_OPENCL`), decoded by the same `post_process()` as the
-CPU and NPU paths. It uses the same ONNX as CPU mode (`PATHS.model_onnx`), so the three
-processors run identical weights — no separate GPU model or conversion needed. OpenCL is
-provided by the Mali blob (`/etc/OpenCL/vendors/mali.icd`); nothing else to install
-(OpenCV is already a dependency).
+CPU and NPU paths. It uses the **same ONNX** as CPU mode (`PATHS.model_onnx`), so all three
+processors run identical weights — no separate GPU model or conversion needed.
 
-Observed: correct detections matching CPU/NPU, ~2.3–2.5 s/frame (~0.4 FPS) — slow, but a
-valid Mali-GPU data point. Confirmed running on the GPU (Mali load ~70–100% during inference).
+Observed (benchmark.mp4, `detectS2`, obj 0.5): **correct detections matching CPU/NPU to within
+~2 px**, ~2.3–2.5 s/frame (~0.4 FPS). It is slow, but it is a genuine, numerically-correct
+Mali-GPU data point — Mali load sits at ~70–100% during inference. The mode is kept on purpose:
+it offloads inference to the GPU, leaving most of the CPU free for other work.
 
-> **Why not ncnn+Vulkan for GPU?** ncnn numerically mis-computes YOLO11 on this Mali-G610:
-> the stride-8/16 class heads collapse to 0.0 on most frames and saturate to garbage on
-> others — reproduced identically on ncnn's CPU **and** Vulkan backends and across multiple
-> ncnn versions, while the same model runs correctly on the NPU and CPU. So the ncnn path is
-> retained only as a (non-functional) reference; the working GPU path is OpenCV-DNN/OpenCL.
-> See `src/processing/opencv_executor.py`.
+> **Why this mode is slow.** The bottleneck is OpenCV-DNN's OpenCL backend (`ocl4dnn`), not the
+> Mali hardware: it does not fuse YOLO11's SiLU activation (so each SiLU runs as a separate,
+> memory-bandwidth-bound element-wise kernel — these dominate the runtime), its fast convolution
+> kernels are Intel-only and fall back to a generic kernel on Mali (no Winograd), and OpenCV
+> forces fp32 on non-Intel GPUs. The net effect is that OpenCV's *own* CPU backend is ~4× faster
+> than its OpenCL backend on the same graph, and ONNX Runtime on CPU (fused + multithreaded) is
+> faster still.
 
----
+> **Why not ncnn + Vulkan?** ncnn was the first GPU candidate but numerically mis-computes YOLO11
+> on this Mali-G610: the stride-8/16 class heads collapse to 0.0 (only stride-32 fires), so
+> detections are garbage. The decisive test was that ncnn's **CPU and Vulkan backends produce the
+> *same* garbage** (they agree with each other), while the **same model is correct on the NPU and
+> on ONNX Runtime CPU** — proving the fault is ncnn's computation of this YOLO11 graph, not the
+> Mali driver and not the model. No conversion path or ncnn version produced stable, correct
+> boxes, so ncnn + Vulkan was dropped in favour of OpenCV-DNN / OpenCL.
 
-### Legacy / experimental: ncnn + Vulkan (does NOT produce correct detections — see note above)
+### System dependencies (one-time setup)
 
-The ncnn path needs two system-level prerequisites beyond the Python packages:
+GPU mode needs an OpenCL stack on top of the Python packages. On this OrangePi it is already
+installed; on a fresh device set it up as follows.
 
-### 1. Mali Vulkan blob
-
-The default Mali blob shipped with Ubuntu for RK3588 is OpenCL-only and does **not**
-include Vulkan. You need the GBM variant with Vulkan:
+**1. OpenCL ICD loader** (generic `libOpenCL.so` that apps link against):
 
 ```bash
-# The .deb is included in the installation/ directory
-sudo dpkg -i installation/libmali-valhall-g610-g24p0-gbm_1.9-1_arm64.deb
+sudo apt install ocl-icd-libopencl1
 ```
 
-Or download from [tsukumijima/libmali-rockchip releases](https://github.com/tsukumijima/libmali-rockchip/releases)
-(file: `libmali-valhall-g610-g24p0-gbm_*_arm64.deb`).
-
-### 2. Vulkan ICD registration
+**2. Mali OpenCL userspace driver** — the `libmali` *valhall-g610* blob, which implements
+OpenCL 3.0 for the Mali-G610. (Installed manually; it is not in the Ubuntu repos.)
 
 ```bash
-sudo mkdir -p /etc/vulkan/icd.d
-sudo tee /etc/vulkan/icd.d/mali.json << 'EOF'
-{
-    "file_format_version": "1.0.0",
-    "ICD": {
-        "library_path": "/usr/lib/aarch64-linux-gnu/libmali.so",
-        "api_version": "1.2.204"
-    }
-}
-EOF
+# Download the g610 valhall blob (x11-wayland-gbm variant includes OpenCL) from
+#   https://github.com/tsukumijima/libmali-rockchip/releases
+sudo cp libmali-valhall-g610-g24p0-x11-wayland-gbm.so /usr/lib/aarch64-linux-gnu/
+sudo ln -sf /usr/lib/aarch64-linux-gnu/libmali-valhall-g610-g24p0-x11-wayland-gbm.so \
+            /usr/lib/aarch64-linux-gnu/libmali.so.1
 ```
 
-### 3. ncnn model conversion (requires a PC with ultralytics)
-
-Use the **Ultralytics-native** ncnn export. It produces the standard YOLO11 head as a
-single decoded output blob (`out0`, shape `[1, 4+nc, 8400]`), which is what
-`post_process_ncnn()` consumes.
+**3. Register the Mali OpenCL ICD** so the loader finds the blob:
 
 ```bash
-# On a PC with Python + ultralytics installed:
-python3 -c "from ultralytics import YOLO; YOLO('your_model.pt').export(format='ncnn', imgsz=640, half=False)"
-# Copy the generated *_ncnn_model/ directory to assets/models/
-# Update config.ini: model_ncnn = assets/models/your_model_ncnn_model
+sudo mkdir -p /etc/OpenCL/vendors
+echo "/usr/lib/aarch64-linux-gnu/libmali-valhall-g610-g24p0-x11-wayland-gbm.so" \
+  | sudo tee /etc/OpenCL/vendors/mali.icd
 ```
 
-> Use `half=False` — fp16 weights degrade DFL/box regression on the Mali-G610.
->
-> **Do NOT** feed the Rockchip RKNN-optimized ONNX (the 3-tensor-per-scale, 9-output
-> head) through `pnnx` for ncnn. That graph is mis-computed by stock ncnn on this
-> device (dead stride-8/16 class heads on Mali, and the CPU backend overflows). The
-> 9-output head is for the **NPU/RKNN** path only. For ncnn/GPU, always use the
-> native export above.
+**4. OpenCV with OpenCL** — `opencv-python` from PyPI already includes the OpenCL backend
+(no rebuild needed).
 
-> **setup.sh** handles steps 1 and 2 automatically if the .deb is present in `installation/`.
+> Note: this is the **OpenCL** path. The old ncnn experiment used Vulkan
+> (`/etc/vulkan/icd.d/`); that is no longer used by this project and is not required.
 
-### ⚠️ Required ncnn version (pinned)
-
-GPU mode is **pinned to `ncnn==1.0.20250503`** (see `requirements.txt`).
-
-`ncnn 1.0.20260526` contains a regression that **zeros the stride-8 / stride-16 class
-heads** of YOLO11 on this device: only large (stride-32) objects produce any class
-score, detections collapse, and bounding boxes look wrong. Confirmed on both the
-Mali-Vulkan and CPU backends with identical model files — i.e. it is a runtime bug, not
-a conversion or model problem. Version `1.0.20250503` computes all three FPN scales
-correctly. This only affects the Python `ncnn` package; it does **not** touch the
-system Mali/Vulkan blob.
+### Verify the GPU is available
 
 ```bash
-# If GPU detections look wrong / only fire on huge boxes, check the version:
-venv/bin/python -c "import ncnn; print(ncnn.__version__)"   # must be 1.0.20250503
-venv/bin/pip install --no-cache-dir --no-deps 'ncnn==1.0.20250503'
-```
-
-### Verify Vulkan detection
-
-```bash
-python3 -c "
-import ncnn
-ncnn.create_gpu_instance()
-count = ncnn.get_gpu_count()
-print('GPU count:', count)
-if count > 0:
-    print('Device:', ncnn.get_gpu_info(0).device_name())
-ncnn.destroy_gpu_instance()
+venv/bin/python -c "
+import cv2
+print('haveOpenCL:', cv2.ocl.haveOpenCL())
+cv2.ocl.setUseOpenCL(True)
+d = cv2.ocl.Device_getDefault()
+print('Device:', d.name(), '| vendor:', d.vendorName(), '| OpenCL', d.OpenCLVersion())
 "
-# Expected: GPU count: 2   Device: Mali-G610
+# Expected: haveOpenCL: True   Device: Mali-G610 r0p0 | vendor: ARM | OpenCL OpenCL 3.0 ...
 ```
 
-### Observed performance (benchmark.mp4, 1 stream)
+### Observed performance (benchmark.mp4, 1 stream, detectS2, obj 0.5)
 
-| Mode | Inference (ms) | FPS | CPU % | GPU % |
-|------|---------------|-----|-------|-------|
-| NPU  | ~15           | ~35 | ~15   | 0     |
-| GPU (ncnn+Vulkan) | ~67–74 | ~13 | ~21 | ~58 |
-| GPU (TIMVX/CPU fallback) | ~397 | ~2.5 | ~94 | ~5 |
+| Mode | Backend | Inference (ms/frame) | FPS | Saturated unit |
+|------|---------|----------------------|-----|----------------|
+| NPU  | RKNN (rknnlite) | ~33 | ~29 | NPU |
+| CPU  | ONNX Runtime | ~127 | ~7.6 | CPU 100% |
+| GPU  | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
+
+All three produce correct, matching detections; the GPU is slowest despite genuinely using the
+Mali (see "Why this mode is slow" above).
+
+> The first GPU run auto-tunes the OpenCL convolution kernels (slower first frame); the tuned
+> configs are cached under `~/.cache/PythonYoloRKNPU/ocl4dnn`, so later runs start faster.
 
 ---
 
@@ -241,7 +215,7 @@ ncnn.destroy_gpu_instance()
 - **Permission denied**: Use `sudo` to run this program
 - **Web interface not accessible**: Check firewall settings and use correct IP
 - **Video stream not loading**: Ensure processing is started and frames are available
-- **GPU mode falling back to CPU**: Install Mali Vulkan blob (see GPU Inference Setup above)
+- **GPU mode falling back to CPU**: Check the OpenCL stack — `cv2.ocl.haveOpenCL()` must be `True` and `/etc/OpenCL/vendors/mali.icd` must point to the libmali blob (see [GPU Inference](#gpu-inference-mali-g610) above)
 
 ## Model Compatibility
 Ensure the RKNN model is compatible with your Rockchip device and matches the input size (640, 640).

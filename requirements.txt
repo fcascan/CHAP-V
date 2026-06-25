@@ -1,26 +1,17 @@
-# Core dependencies for YOLO RKNN/NPU processing
+# Core (GPU mode needs OpenCL support — PyPI opencv-python wheels include it)
 opencv-python>=4.8.0
 numpy>=1.24.0,<2.0.0
 psutil>=5.9.0
 pyudev>=0.24.0
 Pillow>=9.0.0
 
-# Web interface dependencies
+# Web interface
 Flask>=2.3.0
 Flask-SocketIO>=5.3.0
 eventlet>=0.33.0
 
-# RKNN dependencies (for NPU inference)
-# Note: rknnlite will be installed from local wheel file
+# NPU inference (rknnlite is installed from a local wheel)
 # rknn_toolkit_lite2>=2.3.0
 
-# ONNX runtime for CPU fallback
+# CPU inference
 onnxruntime>=1.15.0
-
-# NCNN runtime for GPU inference (Mali via Vulkan)
-# PINNED: 1.0.20260526 has a regression that zeros the stride-8/16 class heads of
-# YOLO11 on this device (only stride-32 fires -> wrong/garbage boxes), confirmed on
-# both Mali-Vulkan and CPU backends. 1.0.20250503 computes all FPN scales correctly.
-# Install with --no-deps so pip does not try to upgrade opencv/numpy (large wheels
-# that download corrupted on the OrangePi). See README "Required ncnn version".
-ncnn==1.0.20250503

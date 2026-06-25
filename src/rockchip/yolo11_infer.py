@@ -12,23 +12,15 @@
 #   - --video_source added for video file and camera inference
 #   - press 'q' in the display window to stop video/camera inference
 #   - draw(): optional frame_label parameter added for per-frame log tagging
-#   - preprocess_frame(): 'ncnn' added to the CHW float32 branch
-#   - setup_model(): directory detection branch added for NCNN model loading
-#     (uses src.processing.ncnn_executor.NCNN_model_container; import is relative
-#     to the project root, not the rknn_zoo examples directory)
+#   - preprocess_frame(): 'opencv' (Mali GPU via OpenCV-DNN/OpenCL) added to the
+#     CHW float32 branch
+#   - setup_model(): branch added for GPU inference — runs the ONNX model on the
+#     Mali-G610 via OpenCV-DNN + OpenCL (src.processing.opencv_executor)
 #
 # Project additions (not part of the original rknn_zoo library):
 #   - Imports: from src.core import config as app_config
 #              from src.utils.frame_overlay import calculate_recent_average_ms,
 #                  calculate_recent_fps, draw_processing_overlay
-#   - post_process_ncnn(): full NCNN/Vulkan GPU post-processing for the
-#     Ultralytics pnnx single-blob output format ([nc+4, 8400]).
-#     Includes degenerate-box filter: discards boxes with zero/negative width or
-#     height that arise from the pnnx anchor_x encoding bug (stored step ~64px
-#     vs correct 32px → cx > frame width → x1 and x2 both clip to right edge).
-#   - _ncnn_stride_info(): maps a flat anchor index (0-8399) to (stride, gx, gy)
-#   - Module-level NCNN diagnostic state: _ncnn_det_diag_done, _ncnn_frame_count,
-#     _ncnn_det_count, _NCNN_SCORE_LOG_INTERVAL
 #   - debug_detection_summary(): prints class counts and top scores when
 #     DEBUG_DETECTIONS is enabled; not present in original rknn_zoo script
 # =============================================================================
@@ -250,203 +242,6 @@ def post_process(input_data):
     return boxes, classes, scores
 
 
-_ncnn_det_diag_done = False   # print anchor details once on first detection frame
-_ncnn_frame_count    = 0      # total frames processed through post_process_ncnn
-_ncnn_det_count      = 0      # total detection-frames so far
-_NCNN_SCORE_LOG_INTERVAL = 50  # log score distribution every N frames
-
-
-def _ncnn_stride_info(anch_idx):
-    """Return (stride, grid_x, grid_y) for a flat anchor index 0-8399."""
-    if anch_idx < 6400:
-        stride = 8; base = 0; cols = 80
-    elif anch_idx < 8000:
-        stride = 16; base = 6400; cols = 40
-    else:
-        stride = 32; base = 8000; cols = 20
-    local = anch_idx - base
-    return stride, local % cols, local // cols
-
-
-def post_process_ncnn(input_data):
-    """Post-process the single-tensor NCNN output from a YOLO11 model.
-
-    The NCNN export (Ultralytics) concatenates decoded boxes and class scores
-    into one blob named 'out0' with shape [nc+4, 8400]:
-      - rows 0-3   : cx, cy, w, h  in pixel coordinates (stride-scaled)
-      - rows 4..nc : class confidences (sigmoided, one row per class)
-
-    Returns (boxes, classes, scores) or (None, None, None).
-    """
-    global _ncnn_det_diag_done, _ncnn_frame_count, _ncnn_det_count
-
-    if not input_data or input_data[0] is None:
-        return None, None, None
-
-    output = np.asarray(input_data[0], dtype=np.float32)
-    _ncnn_frame_count += 1
-
-    # Squeeze any extra leading dims: [1, nc+4, 8400] → [nc+4, 8400]
-    while output.ndim > 2:
-        output = output[0]
-
-    # Auto-orient: NCNN may return [8400, nc+4] on some builds; detect by
-    # checking which axis is 8400 (all anchors).
-    if output.ndim == 2 and output.shape[0] == 8400 and output.shape[1] >= 5:
-        output = output.T  # → [nc+4, 8400]
-
-    if output.shape[0] < 5:
-        print(f"[NCNN WARN] Unexpected output shape {output.shape} — skipping")
-        return None, None, None
-
-    nc = output.shape[0] - 4  # number of classes
-
-    # Boxes: cx, cy, w, h → x1, y1, x2, y2
-    cx = output[0]
-    cy = output[1]
-    w  = output[2]
-    h  = output[3]
-    x1 = cx - w / 2
-    y1 = cy - h / 2
-    x2 = cx + w / 2
-    y2 = cy + h / 2
-    boxes_all = np.stack([x1, y1, x2, y2], axis=1)  # [8400, 4]
-
-    class_scores_all = output[4:].T  # [8400, nc]
-    class_ids_all    = np.argmax(class_scores_all, axis=1)
-    scores_all       = np.max(class_scores_all, axis=1)
-
-    # ── Periodic score-distribution diagnostic (every N frames) ─────────────
-    # Logs the per-FPN-scale (stride 8/16/32) max class score and how many
-    # above-threshold anchors are in-frame vs off-frame.  This makes two failure
-    # modes visible at a glance:
-    #   * a whole stride band reading ~0  → dead class head (e.g. the ncnn
-    #     1.0.20260526 regression — see requirements.txt / README pin)
-    #   * many off-frame above-threshold anchors → stride-32 anchor-decode garbage
-    if _ncnn_frame_count % _NCNN_SCORE_LOG_INTERVAL == 0:
-        _wl, _hl = IMG_SIZE[1], IMG_SIZE[0]
-        _inframe = (cx >= 0) & (cx <= _wl) & (cy >= 0) & (cy <= _hl)
-        _above = scores_all >= OBJ_THRESH
-        _s8, _s16, _s32 = scores_all[:6400], scores_all[6400:8000], scores_all[8000:]
-        top5_idx = np.argsort(scores_all)[::-1][:5]
-        lines = []
-        for i in top5_idx:
-            stride, gx, gy = _ncnn_stride_info(i)
-            cls_name = CLASSES[int(class_ids_all[i])] if 0 <= int(class_ids_all[i]) < len(CLASSES) else str(class_ids_all[i])
-            _io = "in" if _inframe[i] else "OFF"
-            lines.append(f"    anch={i} stride={stride} grid=({gx},{gy}) "
-                         f"cx={cx[i]:.1f} cy={cy[i]:.1f} w={w[i]:.1f} h={h[i]:.1f} "
-                         f"cls={cls_name} score={scores_all[i]:.4f} [{_io}-frame]")
-        print(f"[NCNN SCORE LOG F#{_ncnn_frame_count}] "
-              f"max_score={scores_all.max():.4f}  "
-              f"per-stride max: s8={_s8.max():.3f} s16={_s16.max():.3f} s32={_s32.max():.3f}  "
-              f"above_thresh={int(_above.sum())} "
-              f"(in-frame={int((_above & _inframe).sum())}, off-frame={int((_above & ~_inframe).sum())})  "
-              f"top-5 anchors:")
-        for l in lines:
-            print(l)
-    # ─────────────────────────────────────────────────────────────────────────
-
-    # Filter by score threshold.
-    mask      = scores_all >= OBJ_THRESH
-    boxes     = boxes_all[mask]
-    class_ids = class_ids_all[mask]
-    scores    = scores_all[mask]
-
-    if len(boxes) == 0:
-        return None, None, None
-
-    # Discard off-frame and degenerate boxes.
-    # The NCNN/pnnx export of YOLO11 emits spurious stride-32 anchors whose decoded
-    # CENTER lands far outside the letterbox (observed cx≈1057 for a 640px input,
-    # w≈650).  Their raw width is positive, so a plain area test passes them, but
-    # after get_real_box() they collapse onto the frame edge — e.g. (638,0,638,360) —
-    # and draw as a garbage line.  Fix: drop any box whose center is outside the
-    # letterbox, and any box that is degenerate once clipped to the letterbox bounds.
-    W_lb, H_lb = IMG_SIZE[1], IMG_SIZE[0]
-    cx_b = (boxes[:, 0] + boxes[:, 2]) / 2.0
-    cy_b = (boxes[:, 1] + boxes[:, 3]) / 2.0
-    cl_x1 = np.clip(boxes[:, 0], 0, W_lb); cl_y1 = np.clip(boxes[:, 1], 0, H_lb)
-    cl_x2 = np.clip(boxes[:, 2], 0, W_lb); cl_y2 = np.clip(boxes[:, 3], 0, H_lb)
-    center_in = (cx_b >= 0) & (cx_b <= W_lb) & (cy_b >= 0) & (cy_b <= H_lb)
-    area_ok   = (cl_x2 - cl_x1 > 1) & (cl_y2 - cl_y1 > 1)
-    valid       = center_in & area_ok
-    n_drop_off  = int((~center_in).sum())
-    n_drop_area = int((center_in & ~area_ok).sum())
-    if not valid.any():
-        # Throttle this message: with a weak model every frame can be all-garbage,
-        # which would flood the console. Log only on the periodic diagnostic tick.
-        if (n_drop_off or n_drop_area) and _ncnn_frame_count % _NCNN_SCORE_LOG_INTERVAL == 0:
-            print(f"[NCNN WARN] F#{_ncnn_frame_count}: all {len(boxes)} above-threshold "
-                  f"box(es) discarded: {n_drop_off} off-frame "
-                  f"(stride-32 anchor-decode garbage), {n_drop_area} degenerate.")
-        return None, None, None
-    if not valid.all():
-        print(f"[NCNN WARN] Discarding {int((~valid).sum())} box(es): "
-              f"{n_drop_off} off-frame (center outside letterbox), "
-              f"{n_drop_area} degenerate (zero area after clip).")
-        boxes     = boxes[valid]
-        class_ids = class_ids[valid]
-        scores    = scores[valid]
-
-    _ncnn_det_count += 1
-
-    # ── First-detection diagnostic: show top-5 firing anchors in detail ─────
-    if not _ncnn_det_diag_done:
-        _ncnn_det_diag_done = True
-        above_idx = np.where(mask)[0]  # original anchor indices that passed threshold
-        sorted_order = np.argsort(scores_all[above_idx])[::-1]
-        top_n = min(5, len(sorted_order))
-        print(f"[NCNN DET DIAG F#{_ncnn_frame_count}] "
-              f"{len(above_idx)} candidate(s) above OBJ_THRESH={OBJ_THRESH}  "
-              f"(precision mode: fp32)")
-        for rank in range(top_n):
-            anch_idx = above_idx[sorted_order[rank]]
-            stride, gx, gy = _ncnn_stride_info(anch_idx)
-            cls_id   = int(class_ids_all[anch_idx])
-            cls_name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-            # Per-class raw scores for this anchor
-            per_cls  = ", ".join(
-                f"{(CLASSES[k] if 0 <= k < len(CLASSES) else str(k))}={output[4+k, anch_idx]:.4f}"
-                for k in range(nc)
-            )
-            print(f"[NCNN DET DIAG]  #{rank+1}  anch={anch_idx}  stride={stride}  "
-                  f"grid=({gx},{gy})  "
-                  f"cx={cx[anch_idx]:.1f}  cy={cy[anch_idx]:.1f}  "
-                  f"w={w[anch_idx]:.1f}  h={h[anch_idx]:.1f}  "
-                  f"scores=[{per_cls}]")
-        # Show box-size distribution for all above-threshold anchors
-        w_above = w[above_idx]
-        h_above = h[above_idx]
-        print(f"[NCNN DET DIAG] box-size distribution for all candidates: "
-              f"w∈[{w_above.min():.1f},{w_above.max():.1f}] mean={w_above.mean():.1f}  "
-              f"h∈[{h_above.min():.1f},{h_above.max():.1f}] mean={h_above.mean():.1f}")
-        # Stride band breakdown
-        n8  = int((above_idx < 6400).sum())
-        n16 = int(((above_idx >= 6400) & (above_idx < 8000)).sum())
-        n32 = int((above_idx >= 8000).sum())
-        print(f"[NCNN DET DIAG] stride band breakdown: "
-              f"stride-8={n8}  stride-16={n16}  stride-32={n32}")
-    # ─────────────────────────────────────────────────────────────────────────
-
-    nboxes, nclasses, nscores = [], [], []
-    for c in set(class_ids):
-        inds = np.where(class_ids == c)
-        b = boxes[inds]
-        c_arr = class_ids[inds]
-        s = scores[inds]
-        keep = nms_boxes(b, s)
-        if len(keep):
-            nboxes.append(b[keep])
-            nclasses.append(c_arr[keep])
-            nscores.append(s[keep])
-
-    if not nboxes:
-        return None, None, None
-
-    return np.concatenate(nboxes), np.concatenate(nclasses), np.concatenate(nscores)
-
-
 def debug_detection_summary(boxes, classes, scores, frame_label='frame'):
     """Print raw detection metadata when debug mode is enabled."""
     if not DEBUG_DETECTIONS:
@@ -474,7 +269,10 @@ def draw(image, boxes, scores, classes, frame_label=None):
         else:
             class_name = f'class_{class_id}'
 
-        print('%s%s @ (%d %d %d %d) %.3f' % (prefix, class_name, top, left, right, bottom, score))
+        # Per-box detection log — gated by debug mode (DEBUG_DETECTIONS mirrors
+        # config.ini INFERENCE.debug_mode). The box itself is always drawn below.
+        if DEBUG_DETECTIONS:
+            print('%s%s @ (%d %d %d %d) %.3f' % (prefix, class_name, top, left, right, bottom, score))
 
         box_color = tuple(int(c) for c in app_config.DETECTION_BOX_COLOR)
         label_text_color = tuple(int(c) for c in app_config.DETECTION_LABEL_COLOR)
@@ -505,7 +303,7 @@ def draw(image, boxes, scores, classes, frame_label=None):
 def preprocess_frame(frame, platform):
     img = co_helper.letter_box(im=frame.copy(), new_shape=(IMG_SIZE[1], IMG_SIZE[0]), pad_color=(0, 0, 0))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    if platform in ['pytorch', 'onnx', 'ncnn']:
+    if platform in ['pytorch', 'onnx', 'opencv']:
         input_data = img.transpose((2, 0, 1))
         input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
         input_data = input_data / 255.
@@ -525,8 +323,7 @@ def setup_model(args):
         from rknn_executor import RKNN_model_container
         model = RKNN_model_container(args.model_path, args.target, args.device_id)
     elif model_path.endswith('.onnx') and getattr(args, 'gpu_opencl', False):
-        # GPU mode: run the ONNX on the Mali-G610 via OpenCV-DNN + OpenCL.
-        # (ncnn+Vulkan mis-computes YOLO11 on this GPU — see opencv_executor.py.)
+        # GPU mode: run the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
         platform = 'opencv'
         from src.processing.opencv_executor import OpenCV_OpenCL_model_container
         model = OpenCV_OpenCL_model_container(args.model_path, use_opencl=True)
@@ -534,12 +331,8 @@ def setup_model(args):
         platform = 'onnx'
         from onnx_executor import ONNX_model_container
         model = ONNX_model_container(args.model_path)
-    elif os.path.isdir(model_path):
-        platform = 'ncnn'
-        from src.processing.ncnn_executor import NCNN_model_container
-        model = NCNN_model_container(args.model_path, use_vulkan=True)
     else:
-        assert False, '{} is not rknn/pytorch/onnx/ncnn model'.format(model_path)
+        assert False, '{} is not a rknn/pytorch/onnx model'.format(model_path)
     print('Model-{} is {} model, starting inference'.format(model_path, platform))
     return model, platform
 

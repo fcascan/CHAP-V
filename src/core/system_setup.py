@@ -53,20 +53,28 @@ def setup_inference_device(inference_device):
         return "CPU", False, {}
     
     elif inference_device == "GPU":
+        # GPU mode runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
         # check_gpu_availability() returns (bool, str) — unpack explicitly
         gpu_ok, gpu_msg = check_gpu_availability()
         if gpu_ok:
             try:
-                import ncnn as pyncnn
-                net = pyncnn.Net()
-                net.opt.use_vulkan_compute = True
-                del net
-                print("[INFO] GPU acceleration available and functional.")
-                return "GPU", True, {"gpu_available": True}
+                import cv2
+                if cv2.ocl.haveOpenCL():
+                    cv2.ocl.setUseOpenCL(True)
+                    try:
+                        dev = cv2.ocl.Device_getDefault()
+                        print(f"[INFO] GPU acceleration available: OpenCL on "
+                              f"{dev.name()} ({dev.vendorName()}).")
+                    except Exception:
+                        print("[INFO] GPU acceleration available: OpenCL.")
+                    return "GPU", True, {"gpu_available": True}
+                print("[WARNING] OpenCV built without OpenCL support — GPU mode needs an "
+                      "OpenCL-enabled opencv-python plus the Mali OpenCL ICD "
+                      "(/etc/OpenCL/vendors/mali.icd).")
             except ImportError:
-                print("[WARNING] ncnn package not installed — GPU requires: pip install ncnn")
+                print("[WARNING] opencv-python not installed — GPU requires OpenCV with OpenCL.")
             except Exception as e:
-                print(f"[WARNING] GPU/Vulkan setup failed: {e}")
+                print(f"[WARNING] GPU/OpenCL setup failed: {e}")
         else:
             print(f"[WARNING] GPU check failed: {gpu_msg}")
 

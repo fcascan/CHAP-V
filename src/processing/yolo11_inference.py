@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """yolo11_inference.py
 YOLO11 Inference Engine Integration
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import cv2
@@ -39,8 +39,8 @@ class YOLO11InferenceEngine:
             model_path: Path to the model file (.rknn, .onnx, or .pt)
             target_platform: Target NPU platform (e.g., 'rk3588', 'rk3566'). If None, uses ROCKCHIP_TARGET from config.
             device_id: Device ID for multi-device setups
-            device_type: "NPU" | "GPU" | "CPU". For GPU, an .onnx model is run on the
-                Mali-G610 via OpenCV-DNN + OpenCL (ncnn+Vulkan mis-computes YOLO11 here).
+            device_type: "NPU" | "GPU" | "CPU". For GPU, the .onnx model is run on the
+                Mali-G610 via OpenCV-DNN + OpenCL.
         """
         self.model_path = model_path
         self.device_type = device_type
@@ -91,7 +91,7 @@ class YOLO11InferenceEngine:
             pad_color=(0, 0, 0),
         )
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.platform in ('pytorch', 'onnx', 'ncnn', 'opencv'):
+        if self.platform in ('pytorch', 'onnx', 'opencv'):
             input_data = img.transpose((2, 0, 1))
             input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
             input_data = input_data / 255.
@@ -136,15 +136,9 @@ class YOLO11InferenceEngine:
             
         try:
             logging.debug(f"Starting postprocessing with {len(outputs)} output tensors")
-            if self.platform == 'ncnn':
-                if len(outputs) == 1:
-                    # pnnx format: single decoded [nc+4, 8400] blob
-                    boxes, classes, scores = rockchip_yolo.post_process_ncnn(outputs)
-                else:
-                    # onnx2ncnn format: 9 raw FPN blobs — same layout as ONNX/CPU
-                    boxes, classes, scores = rockchip_yolo.post_process(outputs)
-            else:
-                boxes, classes, scores = rockchip_yolo.post_process(outputs)
+            # All backends (NPU/rknn, CPU/onnx, GPU/opencv) emit the Rockchip
+            # 9-output head, decoded by the same post_process().
+            boxes, classes, scores = rockchip_yolo.post_process(outputs)
             if boxes is not None:
                 logging.debug(f"Postprocessing successful: {len(boxes)} detections")
             else:
@@ -191,13 +185,12 @@ class YOLO11InferenceEngine:
         # Postprocess
         boxes, classes, scores = self.postprocess_outputs(outputs)
 
-        # Show detection results
-        if boxes is not None:
+        # Show detection results — gated by debug mode (config.ini INFERENCE.debug_mode)
+        if boxes is not None and app_config.DEBUG_MODE:
             summary = self.get_detection_summary(boxes, classes, scores)
             label_str = f" [{self._frame_label}]" if self._frame_label else ""
             print(f"[DETECTIONS]{label_str} Classes found: {summary['class_counts']}")
-            if app_config.DEBUG_MODE:
-                logging.debug(f"Detection result: {len(boxes)} objects found")
+            logging.debug(f"Detection result: {len(boxes)} objects found")
 
         # Convert boxes back to original frame coordinates
         if boxes is not None:
@@ -299,8 +292,7 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "GPU":
-        # GPU runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
-        # (Same model as CPU; ncnn+Vulkan mis-computes YOLO11 on this GPU.)
+        # GPU runs the same ONNX model as CPU on the Mali-G610 via OpenCV-DNN + OpenCL.
         model_path = app_config.ONNX_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "CPU":

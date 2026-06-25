@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """config.py
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import configparser
@@ -40,7 +40,7 @@ def _parse_color(value, fallback):
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
-    global MODEL_PATH, ONNX_MODEL_PATH, NCNN_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
+    global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     
     # Clear and re-read the config file
@@ -63,9 +63,6 @@ def load_config(is_reload=False):
     model_onnx_cfg = parser.get("PATHS", "model_onnx", fallback="assets/models/yolov11n.onnx")
     ONNX_MODEL_PATH = os.path.join(BASE_DIR, model_onnx_cfg)
 
-    model_ncnn_cfg = parser.get("PATHS", "model_ncnn", fallback="assets/models/april22_2_ncnn_model")
-    NCNN_MODEL_PATH = os.path.join(BASE_DIR, model_ncnn_cfg)
-    
     # Load image settings
     img_width = parser.getint("IMAGE", "img_width", fallback=640)
     img_height = parser.getint("IMAGE", "img_height", fallback=640)
