@@ -116,9 +116,13 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 - **System Info**: Current status, processing mode, and frame availability
 - **Console Output**: Real-time logging with color-coded message levels
 
-## GPU Inference (Mali-G610)
+## GPU-OpenCV-OpenCL Inference (Mali-G610)
 
-**GPU mode runs the ONNX model on the Mali-G610 via OpenCV-DNN with the OpenCL target**
+> **Mode name:** `inference_device = GPU-OpenCV-OpenCL` (the legacy value `GPU` still works and
+> maps to this mode). Named explicitly because a separate, faster GPU backend (MNN) may be added
+> later as its own mode — this one is the OpenCV-DNN / OpenCL path.
+
+**This mode runs the ONNX model on the Mali-G610 via OpenCV-DNN with the OpenCL target**
 (`DNN_BACKEND_OPENCV` + `DNN_TARGET_OPENCL`), decoded by the same `post_process()` as the
 CPU and NPU paths. It uses the **same ONNX** as CPU mode (`PATHS.model_onnx`), so all three
 processors run identical weights — no separate GPU model or conversion needed.
@@ -197,15 +201,49 @@ print('Device:', d.name(), '| vendor:', d.vendorName(), '| OpenCL', d.OpenCLVers
 
 | Mode | Backend | Inference (ms/frame) | FPS | Saturated unit |
 |------|---------|----------------------|-----|----------------|
-| NPU  | RKNN (rknnlite) | ~33 | ~29 | NPU |
-| CPU  | ONNX Runtime | ~127 | ~7.6 | CPU 100% |
-| GPU  | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
+| NPU               | RKNN (rknnlite) | ~33 | ~29 | NPU |
+| CPU               | ONNX Runtime (all 8 cores) | ~127 | ~7.6 | CPU 100% |
+| CPU-50%           | ONNX Runtime (4 A76 threads) | ~340 | ~3 | CPU ~48% (A55 cores idle) |
+| GPU-OpenCV-OpenCL | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
 
-All three produce correct, matching detections; the GPU is slowest despite genuinely using the
-Mali (see "Why this mode is slow" above).
+All modes produce correct, matching detections; GPU-OpenCV-OpenCL is slowest despite genuinely
+using the Mali (see "Why this mode is slow" above).
 
 > The first GPU run auto-tunes the OpenCL convolution kernels (slower first frame); the tuned
 > configs are cached under `~/.cache/PythonYoloRKNPU/ocl4dnn`, so later runs start faster.
+
+---
+
+## CPU-50% mode (`inference_device = CPU-50%`)
+
+CPU-50% is **plain CPU inference, just capped so it does not saturate the whole CPU** — the device
+stays usable for other things while it runs. It is identical to CPU mode except the ONNX Runtime
+session is limited to `cpu50_threads` (default **4**) threads, pinned to the **A76 big cores**
+(`cpu50_affinity = 4,5,6,7`), so the **A55 little cores stay free** for the OS/desktop. Same
+`detectS2.onnx` — no extra model.
+
+Measured on benchmark.mp4: **~340 ms/frame (~3 FPS)**, whole-device CPU **~48 %** (A76 ~85–88 %,
+A55 ~9 %) — versus full CPU mode which hits ~127 ms/frame but pins all 8 cores at 100 %. The trade
+is throughput for headroom; lower `cpu50_threads` (e.g. `2–3`) leaves even more CPU free.
+
+> This bounds *core placement and count* (the A55 cores stay free), not *utilization* — the A76
+> cluster can still run near 100 % while inferring. The point is the device as a whole is not
+> saturated and stays responsive.
+>
+> A true CPU+GPU split for one stream was evaluated and dropped: with the current GPU ~19× slower
+> than the CPU, it cannot beat CPU-alone (its frames arrive stale). A genuinely useful CPU+GPU mode
+> would first require a faster GPU backend (e.g. MNN) — tracked separately.
+
+Config knobs live under `[INFERENCE]` in `config.ini`:
+
+```ini
+inference_device = CPU-50%
+cpu50_threads = 4          # ONNX Runtime thread cap (the "don't saturate" dial)
+cpu50_affinity = 4,5,6,7   # pin the CPU engine to the A76 big cores ("" = no pinning)
+```
+
+> Select **CPU-50% (CPU sin saturar)** in the web UI's *Inference Device* dropdown, or set
+> `inference_device = CPU-50%` in `config.ini`.
 
 ---
 
@@ -215,17 +253,33 @@ Mali (see "Why this mode is slow" above).
 - **Permission denied**: Use `sudo` to run this program
 - **Web interface not accessible**: Check firewall settings and use correct IP
 - **Video stream not loading**: Ensure processing is started and frames are available
-- **GPU mode falling back to CPU**: Check the OpenCL stack — `cv2.ocl.haveOpenCL()` must be `True` and `/etc/OpenCL/vendors/mali.icd` must point to the libmali blob (see [GPU Inference](#gpu-inference-mali-g610) above)
+- **GPU-OpenCV-OpenCL falling back to CPU**: Check the OpenCL stack — `cv2.ocl.haveOpenCL()` must be `True` and `/etc/OpenCL/vendors/mali.icd` must point to the libmali blob (see [GPU-OpenCV-OpenCL Inference](#gpu-opencv-opencl-inference-mali-g610) above)
 
 ## Model Compatibility
 Ensure the RKNN model is compatible with your Rockchip device and matches the input size (640, 640).
+
+## Benchmark Videos
+The benchmark clips are **public YouTube surveillance videos**, chosen deliberately: they are publicly
+available, show a **clear real-weapon situation in which nobody is harmed** (so the footage is not
+graphic or sensitive), and **nobody is identifiable** (no privacy concerns). Each is security-camera
+footage of two full-body subjects in a room with a typical, everyday setup where such incidents can
+occur — a realistic fit for evaluating weapon detection.
+
+- **benchmark.mp4** — *Caught On Camera: Gunpoint Robbery Inside Nail Salon*
+  (https://www.youtube.com/watch?v=apxdeD32kAk)
+- **benchmark2.mp4** — *Surveillance video: Boy robs gas station, fires shot*
+  (https://www.youtube.com/watch?v=y-QXYbd4Zb0)
 
 ## License
 This project is licensed under the MIT License.
 
 ## Acknowledgments
-- RKNN Toolkit (https://github.com/rockchip-linux/rknn-toolkit)
+- libmali (https://github.com/tsukumijima/libmali-rockchip/releases)
+- RKNN Toolkit2 (https://github.com/airockchip/rknn-toolkit2)
+- RKNN Model Zoo (https://github.com/airockchip/rknn_model_zoo)
 - YOLO Vision (https://github.com/ultralytics/ultralytics)
 - OpenCV (https://opencv.org/)
+- ONNX Runtime (https://github.com/microsoft/onnxruntime)
+- Flask-SocketIO (https://github.com/miguelgrinberg/Flask-SocketIO)
 - rknputop (https://github.com/ramonbroox/rknputop)
 - myrktop (https://github.com/mhl221135/myrktop)

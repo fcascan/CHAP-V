@@ -1,4 +1,5 @@
 // YOLO RKNN Web Interface JavaScript
+// by fcascan 2026
 
 class YOLOWebInterface {
     constructor() {
@@ -1095,7 +1096,14 @@ class YOLOWebInterface {
             
             const label = document.createElement('span');
             label.className = 'legend-label';
-            label.textContent = `Core ${i}:`;
+            // RK3588 CPU clusters: cores 0-3 = A55 (little), cores 4-7 = A76 (big).
+            // Only annotate the CPU chart; NPU cores have no big/little type.
+            if (chartName === 'cpu' && coreCount === 8) {
+                const coreType = i < 4 ? 'A55' : 'A76';
+                label.textContent = `Core ${i} (${coreType}):`;
+            } else {
+                label.textContent = `Core ${i}:`;
+            }
             
             const value = document.createElement('span');
             value.className = 'legend-value';

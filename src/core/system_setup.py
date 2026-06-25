@@ -52,8 +52,8 @@ def setup_inference_device(inference_device):
         print("[INFO] NPU not available, switching to CPU inference mode...")
         return "CPU", False, {}
     
-    elif inference_device == "GPU":
-        # GPU mode runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
+    elif inference_device == "GPU-OPENCV-OPENCL":
+        # Runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL.
         # check_gpu_availability() returns (bool, str) — unpack explicitly
         gpu_ok, gpu_msg = check_gpu_availability()
         if gpu_ok:
@@ -63,24 +63,30 @@ def setup_inference_device(inference_device):
                     cv2.ocl.setUseOpenCL(True)
                     try:
                         dev = cv2.ocl.Device_getDefault()
-                        print(f"[INFO] GPU acceleration available: OpenCL on "
+                        print(f"[INFO] GPU-OpenCV-OpenCL available: OpenCL on "
                               f"{dev.name()} ({dev.vendorName()}).")
                     except Exception:
-                        print("[INFO] GPU acceleration available: OpenCL.")
-                    return "GPU", True, {"gpu_available": True}
-                print("[WARNING] OpenCV built without OpenCL support — GPU mode needs an "
+                        print("[INFO] GPU-OpenCV-OpenCL available: OpenCL.")
+                    return "GPU-OPENCV-OPENCL", True, {"gpu_available": True}
+                print("[WARNING] OpenCV built without OpenCL support — GPU-OpenCV-OpenCL mode needs an "
                       "OpenCL-enabled opencv-python plus the Mali OpenCL ICD "
                       "(/etc/OpenCL/vendors/mali.icd).")
             except ImportError:
-                print("[WARNING] opencv-python not installed — GPU requires OpenCV with OpenCL.")
+                print("[WARNING] opencv-python not installed — GPU-OpenCV-OpenCL requires OpenCV with OpenCL.")
             except Exception as e:
                 print(f"[WARNING] GPU/OpenCL setup failed: {e}")
         else:
             print(f"[WARNING] GPU check failed: {gpu_msg}")
 
-        print("[INFO] GPU not available, switching to CPU inference mode...")
+        print("[INFO] GPU-OpenCV-OpenCL not available, switching to CPU inference mode...")
         return "CPU", False, {}
-    
+
+    elif inference_device == "CPU-50%":
+        # CPU-50% is plain CPU inference, just capped to fewer cores (and pinned to the A76 big
+        # cluster) so it does not saturate all 8 cores — the device stays usable. Always available.
+        print("[INFO] CPU-50% mode: capped CPU inference (leaves the little cores free).")
+        return "CPU-50%", False, {}
+
     # For CPU mode or fallback
     print("[INFO] Using CPU inference mode.")
     return "CPU", False, {}

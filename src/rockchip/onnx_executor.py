@@ -6,6 +6,10 @@
 # Modified from original:
 #   - ONNX_model_container_cpp stub class commented out (empty, unused)
 #   - reset_onnx_shape() commented out (onnxsim utility, not used in inference)
+#   - ONNX_model_container.__init__(): optional intra_op_num_threads + cpu_affinity
+#     params for CPU-50% mode — caps the onnxruntime intra-op thread pool, sets
+#     inter_op=1 and disables thread spinning; default None keeps the original
+#     all-cores behavior (plain CPU mode unchanged).
 # =============================================================================
 
 import numpy as np
@@ -29,14 +33,29 @@ def _ignore_dim_with_zero(shape, shape_target):
 
 
 class ONNX_model_container():
-    def __init__(self, model_path) -> None:
+    def __init__(self, model_path, intra_op_num_threads=None, cpu_affinity=None) -> None:
         opts = rt.SessionOptions()
         opts.log_severity_level = 3  # 3 = error only
+        # CPU-50% mode: cap the CPU thread pool so CPU inference does not pin all 8 cores
+        # (the "don't saturate" dial). intra_op_num_threads=None keeps onnxruntime's default
+        # (all cores) so plain CPU mode is byte-for-byte unchanged.
+        if intra_op_num_threads is not None:
+            opts.intra_op_num_threads = int(intra_op_num_threads)
+            opts.inter_op_num_threads = 1
+            # Stop idle intra-op threads from busy-spinning (burning a core) between the
+            # ~7-8 fps frames — they would otherwise read as ~100% on the capped cores.
+            try:
+                opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            except Exception:
+                pass
         self.sess = rt.InferenceSession(
             model_path, sess_options=opts,
             providers=['CPUExecutionProvider'],
         )
         self.model_path = model_path
+        # The actual thread-to-core pinning is applied by the worker THREAD that calls run()
+        # (os.sched_setaffinity is per-thread); stored here only for reference/inspection.
+        self.cpu_affinity = cpu_affinity
 
     def run(self, input_datas):
         if self.sess is None:

@@ -7,7 +7,23 @@ import configparser
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 config_ini = os.path.join(BASE_DIR, "config.ini")
-parser = configparser.ConfigParser()
+# interpolation=None so values may contain a literal '%' (e.g. inference_device = CPU-50%).
+parser = configparser.ConfigParser(interpolation=None)
+
+
+def _parse_core_list(value):
+    """Parse a CPU core-id list 'a,b,c' into [int]; '' / None -> None (no pinning)."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        ids = [int(part.strip()) for part in text.split(',') if part.strip() != '']
+        return ids or None
+    except Exception:
+        return None
+
 
 def _parse_color(value, fallback):
     """Parse a BGR color from either 'B,G,R' or '#RRGGBB' notation."""
@@ -42,7 +58,8 @@ def load_config(is_reload=False):
     global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
     global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
-    
+    global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME
+
     # Clear and re-read the config file
     if is_reload:
         parser.clear()
@@ -51,10 +68,19 @@ def load_config(is_reload=False):
     # Load all configuration values
     BENCHMARK_MODE = parser.getboolean("MODE", "benchmark_mode", fallback=False)
     INFERENCE_DEVICE = parser.get("INFERENCE", "inference_device", fallback="NPU").strip().upper()
+    # Backward-compat: the old "GPU" device is now "GPU-OPENCV-OPENCL" (a future GPU-MNN mode
+    # will be a separate device), so legacy configs keep working.
+    if INFERENCE_DEVICE == "GPU":
+        INFERENCE_DEVICE = "GPU-OPENCV-OPENCL"
     ROCKCHIP_TARGET = parser.get("INFERENCE", "rockchip_target", fallback="rk3588").strip().lower()
     OBJ_THRESHOLD = parser.getfloat("INFERENCE", "obj_threshold", fallback=0.25)
     NMS_THRESHOLD = parser.getfloat("INFERENCE", "nms_threshold", fallback=0.45)
     DEBUG_MODE = parser.getboolean("INFERENCE", "debug_mode", fallback=False)
+    # Robustness guard: a frame yielding more detections than this is treated as corrupted model
+    # output (the OpenCV-OpenCL/Mali path intermittently mis-computes some models, flooding the
+    # frame with saturated false boxes) and dropped. 0 disables the guard. Real frames for this
+    # app have only a handful of detections, so 50 is comfortably above legitimate counts.
+    MAX_DETECTIONS_PER_FRAME = parser.getint("INFERENCE", "max_detections_per_frame", fallback=50)
     
     # Load paths
     model_rknn_cfg = parser.get("PATHS", "model_rknn", fallback="assets/models/yolov11n.rknn")
@@ -86,6 +112,14 @@ def load_config(is_reload=False):
     MAX_INFERENCE_INSTANCES = parser.getint("INFERENCE", "max_inference_instances", fallback=3)
     # "auto" = all instances on Core 0 (RKNN default); "distributed" = instance N -> Core N
     NPU_CORE_ASSIGNMENT = parser.get("INFERENCE", "npu_core_assignment", fallback="auto").strip().lower()
+
+    # ---- CPU-50% mode (inference_device = CPU-50%) ----
+    # Like CPU mode, but capped so it does NOT saturate all 8 cores — the device stays usable.
+    # onnxruntime intra-op thread cap for the CPU engine (the "don't saturate" dial).
+    CPU50_THREADS = parser.getint("INFERENCE", "cpu50_threads", fallback=4)
+    # Core affinity for the CPU engine (RK3588: A76 big cluster = 4,5,6,7), so the A55 little
+    # cores stay free for the OS/desktop. "" -> no pinning.
+    CPU50_AFFINITY = _parse_core_list(parser.get("INFERENCE", "cpu50_affinity", fallback="4,5,6,7"))
 
     # Load benchmark video paths (one per inference instance, indexed benchmark_video_0..N-1)
     VIDEO_FILE_PATHS = []
@@ -155,6 +189,9 @@ def load_config(is_reload=False):
     
     action = "reloaded" if is_reload else "loaded"
     debug_status = "ON" if DEBUG_MODE else "OFF"
+    _videos = ", ".join(os.path.basename(v) for v in VIDEO_FILE_PATHS)
+    _labels_file = os.path.basename(MODEL_LABELS_FILE_PATH) if MODEL_LABELS_FILE_PATH else None
+    # Log EVERY reloaded variable so a web "Save" shows the full effective config.
     logging.info(
         f"[CONFIG] Configuration {action}:\n"
         f"  benchmark_mode = {BENCHMARK_MODE}\n"
@@ -162,13 +199,29 @@ def load_config(is_reload=False):
         f"  rockchip_target = {ROCKCHIP_TARGET}\n"
         f"  obj_threshold = {OBJ_THRESHOLD}\n"
         f"  nms_threshold = {NMS_THRESHOLD}\n"
-        f"  overlay = {'ON' if OVERLAY_ENABLED else 'OFF'}\n"
-        f"  detection_box_thickness = {DETECTION_BOX_THICKNESS}\n"
-        f"  detection_label_text_size = {DETECTION_LABEL_TEXT_SIZE}\n"
-        f"  detection_label_text_thickness = {DETECTION_LABEL_TEXT_THICKNESS}\n"
+        f"  max_detections_per_frame = {MAX_DETECTIONS_PER_FRAME}\n"
         f"  debug = {debug_status}\n"
         f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}\n"
-        f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}"
+        f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}\n"
+        f"  cpu50_threads = {CPU50_THREADS}\n"
+        f"  cpu50_affinity = {CPU50_AFFINITY}\n"
+        f"  model_rknn = {os.path.basename(MODEL_PATH)}\n"
+        f"  model_onnx = {os.path.basename(ONNX_MODEL_PATH)}\n"
+        f"  model_labels = {_labels_file}\n"
+        f"  classes ({len(CLASSES)}) = [{', '.join(CLASSES)}]\n"
+        f"  benchmark_videos = [{_videos}]\n"
+        f"  img_size = {IMG_SIZE}\n"
+        f"  overlay = {'ON' if OVERLAY_ENABLED else 'OFF'}\n"
+        f"  overlay_text_color = {OVERLAY_TEXT_COLOR}\n"
+        f"  fps_text_size = {FPS_TEXT_SIZE}\n"
+        f"  label_text_size = {LABEL_TEXT_SIZE}\n"
+        f"  save_debug_frames = {SAVE_DEBUG_FRAMES}\n"
+        f"  detection_box_color = {DETECTION_BOX_COLOR}\n"
+        f"  detection_label_text_color = {DETECTION_LABEL_COLOR}\n"
+        f"  detection_label_background_color = {DETECTION_LABEL_BACKGROUND_COLOR}\n"
+        f"  detection_box_thickness = {DETECTION_BOX_THICKNESS}\n"
+        f"  detection_label_text_size = {DETECTION_LABEL_TEXT_SIZE}\n"
+        f"  detection_label_text_thickness = {DETECTION_LABEL_TEXT_THICKNESS}"
     )
     
     # Return updated config for convenience

@@ -16,6 +16,14 @@
 #     CHW float32 branch
 #   - setup_model(): branch added for GPU inference — runs the ONNX model on the
 #     Mali-G610 via OpenCV-DNN + OpenCL (src.processing.opencv_executor)
+#   - setup_model(): ONNX/CPU branch forwards cpu_threads/cpu_affinity to
+#     ONNX_model_container so CPU-50% mode can cap the onnxruntime thread pool and
+#     pin cores (capped, non-saturating CPU inference)
+#   - post_process(): robustness guards for the OpenCV-OpenCL (Mali) path, which
+#     intermittently mis-computes some models and floods a frame with saturated
+#     false boxes — drops degenerate (zero-area) boxes, and drops the whole frame
+#     when detection count exceeds config.MAX_DETECTIONS_PER_FRAME or too many class
+#     scores saturate (~1.0). Correct NPU/CPU output never trips either test.
 #
 # Project additions (not part of the original rknn_zoo library):
 #   - Imports: from src.core import config as app_config
@@ -219,6 +227,12 @@ def post_process(input_data):
 
     boxes, classes, scores = filter_boxes(boxes, scores, classes_conf)
 
+    # Robustness: drop degenerate boxes (zero/near-zero width or height). A correct model never
+    # emits these; the OpenCV-OpenCL (Mali) path intermittently does when it mis-computes a frame.
+    if len(boxes):
+        valid = (boxes[:, 2] - boxes[:, 0] > 1.0) & (boxes[:, 3] - boxes[:, 1] > 1.0)
+        boxes, classes, scores = boxes[valid], classes[valid], scores[valid]
+
     nboxes, nclasses, nscores = [], [], []
     for c in set(classes):
         inds = np.where(classes == c)
@@ -238,6 +252,21 @@ def post_process(input_data):
     boxes = np.concatenate(nboxes)
     classes = np.concatenate(nclasses)
     scores = np.concatenate(nscores)
+
+    # Robustness guard for corrupted GPU (OpenCV-OpenCL/Mali) frames. When the Mali mis-computes a
+    # frame it floods it with FALSE boxes whose class scores SATURATE to ~1.0; a correct model
+    # produces far fewer detections and they rarely saturate (real scores here are ~0.5-0.8). Drop
+    # the whole frame on either signal: too many detections (count cap), or too many near-saturated
+    # ones. Enabled when max_detections_per_frame > 0 (0 disables). Correct NPU/CPU output never
+    # trips either test, so this only fires on a glitched GPU frame.
+    cap = getattr(app_config, 'MAX_DETECTIONS_PER_FRAME', 0)
+    if cap:
+        n_saturated = int(np.sum(np.asarray(scores) >= 0.99))
+        if len(boxes) > cap or n_saturated >= 5:
+            if DEBUG_DETECTIONS:
+                print(f'[DEBUG] dropping frame: {len(boxes)} detections '
+                      f'({n_saturated} saturated >=0.99) — corrupted GPU output guard')
+            return None, None, None
 
     return boxes, classes, scores
 
@@ -330,7 +359,13 @@ def setup_model(args):
     elif model_path.endswith('.onnx'):
         platform = 'onnx'
         from onnx_executor import ONNX_model_container
-        model = ONNX_model_container(args.model_path)
+        # cpu_threads / cpu_affinity are set only by CPU-50% mode (capped CPU); absent (None)
+        # for plain CPU mode, which keeps onnxruntime's all-cores default unchanged.
+        model = ONNX_model_container(
+            args.model_path,
+            intra_op_num_threads=getattr(args, 'cpu_threads', None),
+            cpu_affinity=getattr(args, 'cpu_affinity', None),
+        )
     else:
         assert False, '{} is not a rknn/pytorch/onnx model'.format(model_path)
     print('Model-{} is {} model, starting inference'.format(model_path, platform))

@@ -31,7 +31,8 @@ class YOLO11InferenceEngine:
     yolo11 implementation while preserving the existing application API.
     """
     
-    def __init__(self, model_path, target_platform=None, device_id=None, device_type=None):
+    def __init__(self, model_path, target_platform=None, device_id=None, device_type=None,
+                 cpu_threads=None, cpu_affinity=None):
         """
         Initialize YOLO11 inference engine.
 
@@ -41,9 +42,14 @@ class YOLO11InferenceEngine:
             device_id: Device ID for multi-device setups
             device_type: "NPU" | "GPU" | "CPU". For GPU, the .onnx model is run on the
                 Mali-G610 via OpenCV-DNN + OpenCL.
+            cpu_threads: onnxruntime intra-op thread cap for a CPU engine (None = all cores).
+                Only set by CPU-50% mode (capped CPU).
+            cpu_affinity: list of core ids the CPU worker thread should pin to (applied by the
+                worker thread itself via os.sched_setaffinity; stored here for reference).
         """
         self.model_path = model_path
         self.device_type = device_type
+        self.cpu_affinity = cpu_affinity
         app_config.reload_config()
         _sync_rockchip_runtime_config()
 
@@ -53,8 +59,10 @@ class YOLO11InferenceEngine:
         self.model = None
         self.platform = None
         self.coco_helper = COCO_test_helper(enable_letter_box=True)
-        # The Rockchip script uses a module-level co_helper in preprocess_frame.
-        rockchip_yolo.co_helper = self.coco_helper
+        # NOTE: deliberately do NOT set rockchip_yolo.co_helper here. The hot path uses
+        # self.coco_helper (per-engine, thread-safe); the module global is only consumed by
+        # the standalone CLI in yolo11_infer.py. Setting it would let a second engine clobber
+        # the first's helper — a real hazard if multiple engines ever coexist (e.g. NPU pool).
 
         try:
             self.model, self.platform = rockchip_yolo.setup_model(
@@ -62,7 +70,9 @@ class YOLO11InferenceEngine:
                     model_path=model_path,
                     target=self.target_platform,
                     device_id=device_id,
-                    gpu_opencl=(device_type == "GPU"),
+                    gpu_opencl=(device_type == "GPU-OPENCV-OPENCL"),
+                    cpu_threads=cpu_threads,
+                    cpu_affinity=cpu_affinity,
                 )
             )
             logging.info(f"YOLO11 model loaded: {model_path} on platform: {self.platform}")
@@ -216,7 +226,7 @@ class YOLO11InferenceEngine:
             rockchip_yolo.draw(frame, boxes, scores, classes,
                                frame_label=getattr(self, '_frame_label', None))
         return frame
-    
+
     def get_detection_summary(self, boxes, classes, scores, score_threshold=0.5):
         """
         Get a summary of detections with custom class names.
@@ -277,13 +287,15 @@ class YOLO11InferenceEngine:
                 logging.warning(f"Error releasing model: {e}")
 
 
-def create_yolo11_engine(device_type="NPU", npu_core_id=None):
+def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, cpu_affinity=None):
     """
     Factory function to create YOLO11 inference engine based on configuration.
 
     Args:
-        device_type: Inference device type ("NPU", "GPU", "CPU")
+        device_type: Inference device type ("NPU", "CPU", "CPU-50%", "GPU-OPENCV-OPENCL").
         npu_core_id: NPU core index (0, 1, 2) for explicit core pinning. None = RKNN default (Core 0).
+        cpu_threads: onnxruntime intra-op thread cap for a CPU engine (None = all cores, unchanged).
+        cpu_affinity: list of core ids to pin the CPU engine to (None = no pinning).
 
     Returns:
         YOLO11InferenceEngine instance
@@ -291,13 +303,18 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
     if device_type == "NPU":
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
-    elif device_type == "GPU":
-        # GPU runs the same ONNX model as CPU on the Mali-G610 via OpenCV-DNN + OpenCL.
+    elif device_type == "GPU-OPENCV-OPENCL":
         model_path = app_config.ONNX_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
-    elif device_type == "CPU":
+    elif device_type in ("CPU", "CPU-50%"):
         model_path = app_config.ONNX_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
+        # CPU-50%: cap threads + pin to the A76 cluster so the device is not saturated.
+        if device_type == "CPU-50%":
+            if cpu_threads is None:
+                cpu_threads = app_config.CPU50_THREADS
+            if cpu_affinity is None:
+                cpu_affinity = app_config.CPU50_AFFINITY
     else:
         raise ValueError(f"Unsupported device type: {device_type}")
 
@@ -309,8 +326,29 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None):
     logging.info(f"Model path: {model_path}")
     logging.info(f"Using {len(app_config.CLASSES)} custom classes from config")
     logging.info(f"Using detection thresholds: OBJ={app_config.OBJ_THRESHOLD}, NMS={app_config.NMS_THRESHOLD}")
+    if cpu_threads is not None:
+        logging.info(f"CPU engine thread cap: intra_op_num_threads={cpu_threads}, affinity={cpu_affinity}")
 
-    return YOLO11InferenceEngine(model_path, platform, device_id=npu_core_id, device_type=device_type)
+    # Build the engine while the calling thread carries the target affinity, so onnxruntime's
+    # intra-op thread pool (created at session construction) inherits the A76 mask. Restored after.
+    orig_aff = None
+    if cpu_affinity and hasattr(os, 'sched_setaffinity'):
+        try:
+            orig_aff = os.sched_getaffinity(0)
+            os.sched_setaffinity(0, set(int(c) for c in cpu_affinity))
+        except Exception:
+            orig_aff = None
+    try:
+        engine = YOLO11InferenceEngine(model_path, platform, device_id=npu_core_id,
+                                       device_type=device_type, cpu_threads=cpu_threads,
+                                       cpu_affinity=cpu_affinity)
+    finally:
+        if orig_aff is not None:
+            try:
+                os.sched_setaffinity(0, orig_aff)
+            except Exception:
+                pass
+    return engine
 
 
 def yolo11_postprocess_wrapper(outputs, original_shape):

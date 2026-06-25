@@ -2,7 +2,7 @@
 """web_video_processing.py
 Benchmark video processing with web interface integration.
 Each video stream runs in its own thread so all NPU cores work in parallel.
-by fcascan 2025
+by fcascan 2026
 """
 import cv2
 import time
@@ -46,6 +46,17 @@ def _read_system_stats():
 def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger,
                    results_dir=None, run_timestamp=None, npu_core_id=None, benchmark_video=None):
     """Process one benchmark video stream until it ends or processing is stopped."""
+    # CPU-50%: pin this worker thread to the engine's core set (A76 big cluster). This thread
+    # participates in onnxruntime's intra-op pool, so pinning it (plus the pool, inherited at
+    # build time) keeps CPU inference off the A55 little cores. No-op for other modes (affinity None).
+    _aff = getattr(engine, 'cpu_affinity', None)
+    if _aff and hasattr(os, 'sched_setaffinity'):
+        try:
+            os.sched_setaffinity(0, set(int(c) for c in _aff))
+            logger.info(f"Stream {idx}: CPU worker pinned to cores {sorted(_aff)}")
+        except Exception:
+            pass
+
     display_timestamps = []
     inftime_buf = []
     total_frames = 0

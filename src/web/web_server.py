@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """web_server.py
 Flask web server for YOLO RKNN web interface
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import sys
@@ -199,7 +199,7 @@ class WebServer:
                 
                 # Update config.ini file
                 config_path = os.path.join(BASE_DIR, 'config.ini')
-                parser = configparser.ConfigParser()
+                parser = configparser.ConfigParser(interpolation=None)
                 parser.read(config_path)
                 
                 if 'benchmark_mode' in data:
@@ -232,17 +232,17 @@ class WebServer:
                 # Write updated config
                 with open(config_path, 'w') as configfile:
                     parser.write(configfile)
-                
+
                 # Reload configuration to make changes effective immediately
                 from ..core.config import reload_config
                 updated_config = reload_config()
-                
+
                 # Notify about changes via SocketIO
                 self.socketio.emit('config_updated', {
                     'message': 'Configuration updated and reloaded',
                     'config': updated_config
                 })
-                    
+
                 return jsonify({'status': 'success', 'message': 'Configuration updated and reloaded successfully'})
                 
             except Exception as e:
