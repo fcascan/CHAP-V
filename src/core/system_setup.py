@@ -87,9 +87,49 @@ def setup_inference_device(inference_device):
         print("[INFO] CPU-50% mode: capped CPU inference (leaves the little cores free).")
         return "CPU-50%", False, {}
 
+    elif inference_device == "GPU-MNN":
+        # Runs the .mnn model on the Mali-G610 via MNN (Alibaba) + OpenCL.
+        try:
+            from importlib import import_module
+            import_module("MNN")
+            _provision_opencl_so()  # MNN dlopens a bare "libOpenCL.so"; this device ships only .so.1
+            print("[INFO] GPU-MNN available: MNN + OpenCL on the Mali-G610.")
+            return "GPU-MNN", True, {"gpu_available": True}
+        except ImportError:
+            print("[WARNING] pymnn (MNN) not installed — GPU-MNN requires the MNN OpenCL build "
+                  "(see CLAUDE.md / README). ")
+        except Exception as e:
+            print(f"[WARNING] GPU-MNN setup failed: {e}")
+        print("[INFO] GPU-MNN not available, switching to CPU inference mode...")
+        return "CPU", False, {}
+
     # For CPU mode or fallback
     print("[INFO] Using CPU inference mode.")
     return "CPU", False, {}
+
+
+def _provision_opencl_so():
+    """Ensure a bare 'libOpenCL.so' exists for MNN's OpenCL loader.
+
+    MNN's OpenCLWrapper dlopens "libOpenCL.so" and "/usr/lib/libOpenCL.so", but this
+    device ships only "libOpenCL.so.1". Create the symlink(s) so MNN finds the (working,
+    OpenCV-shared) ICD loader. Best-effort; needs root, which the app runs as. This only
+    adds a generic loader symlink — it does NOT touch the Mali driver or its ICD vendor file.
+    """
+    import os
+    real = "/usr/lib/aarch64-linux-gnu/libOpenCL.so.1"
+    if not os.path.exists(real):
+        return
+    for link in ("/usr/lib/libOpenCL.so", "/usr/lib/aarch64-linux-gnu/libOpenCL.so"):
+        if os.path.exists(link):
+            continue
+        try:
+            os.symlink(real, link)
+            print(f"[INFO] GPU-MNN: created OpenCL loader symlink {link} -> {real}")
+        except PermissionError:
+            print(f"[WARNING] GPU-MNN: need root to create {link}; run once: sudo ln -sf {real} {link}")
+        except Exception:
+            pass
 
 
 def disable_unnecessary_logging():

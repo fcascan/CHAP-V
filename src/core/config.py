@@ -59,6 +59,7 @@ def load_config(is_reload=False):
     global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME
+    global MNN_MODEL_PATH, MNN_PRECISION, MNN_BACKEND
 
     # Clear and re-read the config file
     if is_reload:
@@ -88,6 +89,9 @@ def load_config(is_reload=False):
     
     model_onnx_cfg = parser.get("PATHS", "model_onnx", fallback="assets/models/yolov11n.onnx")
     ONNX_MODEL_PATH = os.path.join(BASE_DIR, model_onnx_cfg)
+
+    model_mnn_cfg = parser.get("PATHS", "model_mnn", fallback="assets/models/detectS2.mnn")
+    MNN_MODEL_PATH = os.path.join(BASE_DIR, model_mnn_cfg)
 
     # Load image settings
     img_width = parser.getint("IMAGE", "img_width", fallback=640)
@@ -120,6 +124,12 @@ def load_config(is_reload=False):
     # Core affinity for the CPU engine (RK3588: A76 big cluster = 4,5,6,7), so the A55 little
     # cores stay free for the OS/desktop. "" -> no pinning.
     CPU50_AFFINITY = _parse_core_list(parser.get("INFERENCE", "cpu50_affinity", fallback="4,5,6,7"))
+
+    # ---- GPU-MNN mode (inference_device = GPU-MNN): .mnn model on the Mali-G610 via MNN + OpenCL ----
+    # mnn_precision: low = fp16 (default, fastest) | high = fp32 (bit-exact to CPU) | normal.
+    MNN_PRECISION = parser.get("INFERENCE", "mnn_precision", fallback="low").strip().lower()
+    # mnn_backend: OPENCL (Mali GPU); CPU also accepted (MNN on CPU) for debugging.
+    MNN_BACKEND = parser.get("INFERENCE", "mnn_backend", fallback="OPENCL").strip().upper()
 
     # Load benchmark video paths (one per inference instance, indexed benchmark_video_0..N-1)
     VIDEO_FILE_PATHS = []
@@ -205,8 +215,11 @@ def load_config(is_reload=False):
         f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}\n"
         f"  cpu50_threads = {CPU50_THREADS}\n"
         f"  cpu50_affinity = {CPU50_AFFINITY}\n"
+        f"  mnn_precision = {MNN_PRECISION}\n"
+        f"  mnn_backend = {MNN_BACKEND}\n"
         f"  model_rknn = {os.path.basename(MODEL_PATH)}\n"
         f"  model_onnx = {os.path.basename(ONNX_MODEL_PATH)}\n"
+        f"  model_mnn = {os.path.basename(MNN_MODEL_PATH)}\n"
         f"  model_labels = {_labels_file}\n"
         f"  classes ({len(CLASSES)}) = [{', '.join(CLASSES)}]\n"
         f"  benchmark_videos = [{_videos}]\n"

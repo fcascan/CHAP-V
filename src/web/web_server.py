@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """web_server.py
 Flask web server for YOLO RKNN web interface
-by fcascan 2026
+by fcascan 2025
 """
 import os
 import sys
@@ -163,7 +163,7 @@ class WebServer:
         def get_config():
             """Get current configuration"""
             # Import fresh values to ensure we get the latest configuration
-            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH
+            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH, MNN_MODEL_PATH
             from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
             from ..core.config import MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, DEBUG_MODE
 
@@ -173,9 +173,11 @@ class WebServer:
                 'debug_mode': DEBUG_MODE,
                 'model_rknn': os.path.basename(MODEL_PATH) if MODEL_PATH else '',
                 'model_onnx': os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else '',
+                'model_mnn': os.path.basename(MNN_MODEL_PATH) if MNN_MODEL_PATH else '',
                 'paths': {
                     'model_rknn': MODEL_PATH,
                     'model_onnx': ONNX_MODEL_PATH,
+                    'model_mnn': MNN_MODEL_PATH,
                     'video_file': VIDEO_FILE_PATH
                 },
                 'image_config': {
@@ -217,7 +219,12 @@ class WebServer:
                     # Update the model_onnx path to include assets/models/
                     model_path = f"assets/models/{data['model_onnx']}"
                     parser.set('PATHS', 'model_onnx', model_path)
-                    
+
+                if 'model_mnn' in data and data['model_mnn']:
+                    # Update the model_mnn path to include assets/models/
+                    model_path = f"assets/models/{data['model_mnn']}"
+                    parser.set('PATHS', 'model_mnn', model_path)
+
                 if 'max_inference_instances' in data:
                     parser.set('INFERENCE', 'max_inference_instances', str(data['max_inference_instances']))
 
@@ -255,25 +262,30 @@ class WebServer:
                 models_dir = os.path.join(BASE_DIR, 'assets', 'models')
                 
                 if not os.path.exists(models_dir):
-                    return jsonify({'rknn_models': [], 'onnx_models': []})
-                
+                    return jsonify({'rknn_models': [], 'onnx_models': [], 'mnn_models': []})
+
                 rknn_models = []
                 onnx_models = []
-                
+                mnn_models = []
+
                 # Scan for model files
                 for filename in os.listdir(models_dir):
                     if filename.lower().endswith('.rknn'):
                         rknn_models.append(filename)
                     elif filename.lower().endswith('.onnx'):
                         onnx_models.append(filename)
-                
+                    elif filename.lower().endswith('.mnn'):
+                        mnn_models.append(filename)
+
                 # Sort the lists for better UX
                 rknn_models.sort()
                 onnx_models.sort()
-                
+                mnn_models.sort()
+
                 return jsonify({
                     'rknn_models': rknn_models,
-                    'onnx_models': onnx_models
+                    'onnx_models': onnx_models,
+                    'mnn_models': mnn_models
                 })
                 
             except Exception as e:

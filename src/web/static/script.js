@@ -1,5 +1,4 @@
 // YOLO RKNN Web Interface JavaScript
-// by fcascan 2026
 
 class YOLOWebInterface {
     constructor() {
@@ -27,8 +26,11 @@ class YOLOWebInterface {
     init() {
         this.initSocket();
         this.initUI();
-        this.loadAvailableModels();
-        this.loadConfig();
+        // Populate the model dropdowns BEFORE loading the config, then select the configured
+        // values. Setting <select>.value before its <option>s exist silently no-ops, which made
+        // the model dropdowns preload the first model instead of the value from config.ini (on
+        // first open and on F5). Chaining guarantees the options exist first.
+        this.loadAvailableModels().then(() => this.loadConfig());
         this.refreshStatus();
 
         // Set up periodic status updates
@@ -155,7 +157,19 @@ class YOLOWebInterface {
                     onnxSelect.appendChild(option);
                 });
             }
-            
+
+            // Populate MNN models dropdown
+            const mnnSelect = document.getElementById('model-mnn-select');
+            if (mnnSelect && models.mnn_models) {
+                mnnSelect.innerHTML = '';
+                models.mnn_models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    mnnSelect.appendChild(option);
+                });
+            }
+
             console.log('Available models loaded:', models);
             
         } catch (error) {
@@ -174,6 +188,7 @@ class YOLOWebInterface {
             const inferenceDeviceSelect = document.getElementById('inference-device-select');
             const modelRknnSelect = document.getElementById('model-rknn-select');
             const modelOnnxSelect = document.getElementById('model-onnx-select');
+            const modelMnnSelect = document.getElementById('model-mnn-select');
             const maxInferenceInstances = document.getElementById('max-inference-instances');
             const npuCoreAssignment = document.getElementById('npu-core-assignment');
             const debugMode = document.getElementById('debug-mode');
@@ -184,12 +199,19 @@ class YOLOWebInterface {
             if (inferenceDeviceSelect) {
                 inferenceDeviceSelect.value = config.inference_device;
             }
-            if (modelRknnSelect && config.model_rknn) {
-                modelRknnSelect.value = config.model_rknn;
-            }
-            if (modelOnnxSelect && config.model_onnx) {
-                modelOnnxSelect.value = config.model_onnx;
-            }
+            // Select the configured model in each dropdown. If the configured file isn't in the
+            // populated list, add it as an option so the dropdown still reflects config.ini
+            // instead of silently falling back to the first entry.
+            const selectModel = (sel, val) => {
+                if (!sel || !val) return;
+                if (![...sel.options].some(o => o.value === val)) {
+                    sel.appendChild(new Option(val, val));
+                }
+                sel.value = val;
+            };
+            selectModel(modelRknnSelect, config.model_rknn);
+            selectModel(modelOnnxSelect, config.model_onnx);
+            selectModel(modelMnnSelect, config.model_mnn);
             if (maxInferenceInstances && config.camera_config) {
                 maxInferenceInstances.value = config.camera_config.max_inference_instances;
             }
@@ -246,6 +268,7 @@ class YOLOWebInterface {
                 inference_device: formData.get('inference_device'),
                 model_rknn: formData.get('model_rknn'),
                 model_onnx: formData.get('model_onnx'),
+                model_mnn: formData.get('model_mnn'),
                 max_inference_instances: clampedInstances,
                 npu_core_assignment: formData.get('npu_core_assignment'),
                 debug_mode: formData.get('debug_mode') === 'true',

@@ -46,3 +46,16 @@ src/processing/results/
 # Configurations
 # *.ini
 # *.cfg
+
+# AI Agent instruction files (each dev generates their own; not committed)
+AGENTS.md
+CLAUDE.md
+DESIGN.md
+AI_*.md
+*_AGENT.md
+
+# Claude Code local config / agent setup
+/.claude/
+
+# AI-generated docs (logbooks, analyses, etc.)
+/.ia-docs/

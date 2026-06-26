@@ -229,6 +229,7 @@
                                     <option value="CPU">CPU</option>
                                     <option value="CPU-50%">CPU-50%</option>
                                     <option value="GPU-OPENCV-OPENCL">GPU-OpenCV-OpenCL</option>
+                                    <option value="GPU-MNN">GPU-MNN</option>
                                 </select>
                             </div>
                             
@@ -245,7 +246,14 @@
                                     <option value="">Loading models...</option>
                                 </select>
                             </div>
-                            
+
+                            <div class="form-group">
+                                <label for="model-mnn-select">MNN Model:</label>
+                                <select id="model-mnn-select" name="model_mnn">
+                                    <option value="">Loading models...</option>
+                                </select>
+                            </div>
+
                             <div class="form-group">
                                 <label for="max-inference-instances">Max Inference Instances:</label>
                                 <input type="number" id="max-inference-instances" name="max_inference_instances" min="1" max="3" value="3">

@@ -66,11 +66,36 @@ Then open your browser to: **http://your-device-ip:8080**
 
 ## Configuration
 
-Edit [`config.ini`](config.ini):
-- `benchmark_mode`: Video file vs camera mode
-- `device`: NPU, GPU or CPU inference
-- `enabled`: Enable/disable web interface by default
-- Model paths and detection parameters
+All settings live in [`config.ini`](config.ini). A subset can also be changed at runtime from the web
+UI's *Configuration* panel (which writes them back to `config.ini`); the rest are file-only. The
+**Web** column marks which is which.
+
+| Section | Key | Values / format | Web |
+|---|---|---|:---:|
+| `[MODE]` | `benchmark_mode` | `true` (video file) / `false` (camera) | ☑ |
+| `[INFERENCE]` | `inference_device` | `NPU` / `CPU` / `CPU-50%` / `GPU-OpenCV-OpenCL` / `GPU-MNN` | ☑ |
+| | `max_inference_instances` | `1`–`3` (parallel streams/cameras) | ☑ |
+| | `npu_core_assignment` | `auto` (all on Core 0) / `distributed` (one core per instance) | ☑ |
+| | `debug_mode` | `true` / `false` (verbose logging) | ☑ |
+| | `rockchip_target` | NPU platform, e.g. `rk3588` | — |
+| | `obj_threshold`, `nms_threshold` | `0.0`–`1.0` | — |
+| | `max_detections_per_frame` | int; `0` disables the corrupt-frame guard | — |
+| | `cpu50_threads`, `cpu50_affinity` | int · CSV core ids — **CPU-50%** mode | — |
+| | `mnn_precision`, `mnn_backend` | `low`/`high`/`normal` · `OPENCL`/`CPU` — **GPU-MNN** mode | — |
+| `[PATHS]` | `model_rknn` | `.rknn` path — used by **NPU** | ☑ |
+| | `model_onnx` | `.onnx` path — used by **CPU / CPU-50% / GPU-OpenCV-OpenCL** | ☑ |
+| | `model_mnn` | `.mnn` path — used by **GPU-MNN** | — |
+| | `model_labels` | class-names file path | — |
+| | `benchmark_video_0..N` | benchmark video path, one per stream | — |
+| `[WEB]` | `enabled`, `host`, `port` | `true`/`false` · bind IP · port | — |
+| `[IMAGE]` | `img_width`, `img_height` | inference size, must match the model (`640`) | — |
+| | overlay/text style | `show_overlay`, `fps_text_size`, `label_text_size`, `overlay_text_color`, `save_debug_frames` | — |
+| `[DETECTION]` | box/label style | `box_color`, `label_text_color`, `label_background_color`, `box_thickness`, `label_text_size`, `label_text_thickness` | — |
+| `[CLASSES]` | `default_labels` | comma-separated class names (fallback if no labels file) | — |
+
+> **Web UI** (*Configuration* panel → **Save**) edits only the ☑ rows; everything else is set in
+> `config.ini` directly. Colors accept `B,G,R` or `#RRGGBB`. Comments must be on their own line
+> (`;` prefix — not after a value), and a literal `%` is allowed (e.g. `CPU-50%`).
 
 ## Usage Options
 
@@ -89,7 +114,8 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 
 ### Inference Devices
 - **NPU Mode**: `device = NPU` - Uses RKNN Lite API with the RK3588 Neural Processing Unit
-- **GPU Mode**: `device = GPU` - Runs the ONNX model on the Mali-G610 GPU via OpenCV-DNN + OpenCL (see [GPU Inference](#gpu-inference-mali-g610) below)
+- **GPU-OpenCV-OpenCL Mode**: `inference_device = GPU-OpenCV-OpenCL` - Runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL (numerically correct but slow; see [GPU-OpenCV-OpenCL Inference](#gpu-opencv-opencl-inference-mali-g610) below)
+- **GPU-MNN Mode**: `inference_device = GPU-MNN` - Runs a dedicated `.mnn` model on the Mali-G610 via MNN + OpenCL (fp16) - the fast, numerically-correct GPU path (see [GPU-MNN Inference](#gpu-mnn-inference-mali-g610) below)
 - **CPU Mode**: `device = CPU` - Uses ONNX Runtime with the CPU backend
 
 ### Processing Modes
@@ -205,9 +231,13 @@ print('Device:', d.name(), '| vendor:', d.vendorName(), '| OpenCL', d.OpenCLVers
 | CPU               | ONNX Runtime (all 8 cores) | ~127 | ~7.6 | CPU 100% |
 | CPU-50%           | ONNX Runtime (4 A76 threads) | ~340 | ~3 | CPU ~48% (A55 cores idle) |
 | GPU-OpenCV-OpenCL | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
+| GPU-MNN (fp16)    | MNN / OpenCL (Mali) | ~140 | ~7 | GPU |
+| GPU-MNN (fp32)    | MNN / OpenCL (Mali) | ~260 | ~4 | GPU |
 
-All modes produce correct, matching detections; GPU-OpenCV-OpenCL is slowest despite genuinely
-using the Mali (see "Why this mode is slow" above).
+All modes produce correct, matching detections. GPU-OpenCV-OpenCL is slowest; **GPU-MNN is the fast,
+correct GPU path** (~18× faster than OpenCV-OpenCL, ~CPU-parity in speed while offloading the CPU —
+see [GPU-MNN Inference](#gpu-mnn-inference-mali-g610)). Figures are approximate; the first GPU-MNN run
+adds a one-time ~50 s OpenCL kernel auto-tuning.
 
 > The first GPU run auto-tunes the OpenCL convolution kernels (slower first frame); the tuned
 > configs are cached under `~/.cache/PythonYoloRKNPU/ocl4dnn`, so later runs start faster.
@@ -234,16 +264,57 @@ is throughput for headroom; lower `cpu50_threads` (e.g. `2–3`) leaves even mor
 > than the CPU, it cannot beat CPU-alone (its frames arrive stale). A genuinely useful CPU+GPU mode
 > would first require a faster GPU backend (e.g. MNN) — tracked separately.
 
-Config knobs live under `[INFERENCE]` in `config.ini`:
+Enable it by selecting **CPU-50%** in the web UI's *Inference Device* dropdown (or `inference_device =
+CPU-50%`); tune the cap with `cpu50_threads` and `cpu50_affinity` — see [Configuration](#configuration).
 
-```ini
-inference_device = CPU-50%
-cpu50_threads = 4          # ONNX Runtime thread cap (the "don't saturate" dial)
-cpu50_affinity = 4,5,6,7   # pin the CPU engine to the A76 big cores ("" = no pinning)
+---
+
+## GPU-MNN Inference (Mali-G610)
+
+> **Mode name:** `inference_device = GPU-MNN`. The fast, numerically-correct GPU path: it runs a
+> dedicated `.mnn` model on the Mali-G610 via **MNN** (Alibaba) with the **OpenCL** backend
+> (operator fusion + fp16 + kernel auto-tuning).
+
+Unlike GPU-OpenCV-OpenCL (correct but ~2.4 s/frame), MNN's OpenCL backend computes the same YOLO11
+graph **correctly and ~18× faster** (~140 ms/frame at fp16). Verified against the CPU path on
+benchmark.mp4: every output head — including the stride-8/16 class heads that ncnn+Vulkan corrupted —
+matches CPU at **cosine ≥ 0.9993 (fp16)** / **≥ 0.9999 (fp32)**, and per-frame detections match CPU.
+
+**Precision is a runtime knob** (one `.mnn` file serves both fp16 and fp32): enable with
+`inference_device = GPU-MNN` and set `mnn_precision` (default `low` = fp16) / `mnn_backend` — see
+[Configuration](#configuration).
+
+### Model
+GPU-MNN uses its own model (`PATHS.model_mnn`, default `assets/models/detectS2.mnn`), converted from
+the same ONNX in Google Colab. Convert to a plain fp32 `.mnn` (no `--fp16`) — the compute precision is
+chosen at runtime via `mnn_precision`:
+
+```bash
+mnnconvert -f ONNX --modelFile detectS2.onnx --MNNModel detectS2.mnn --bizCode biz
 ```
 
-> Select **CPU-50% (CPU sin saturar)** in the web UI's *Inference Device* dropdown, or set
-> `inference_device = CPU-50%` in `config.ini`.
+### System dependencies (one-time setup)
+The PyPI `mnn` wheel is **CPU-only** (no OpenCL backend). MNN with OpenCL must be **built from source**
+(already done on this device):
+
+```bash
+git clone --depth 1 https://github.com/alibaba/MNN.git
+cd MNN/pymnn/pip_package
+# build_deps.py: set MNN_ARM82=OFF (gcc 15 ICEs on the ARM82 fp16 backend; not needed for GPU)
+CMAKE_POLICY_VERSION_MINIMUM=3.5 venv/bin/python build_deps.py opencl   # cmake 4 policy compat
+venv/bin/python setup.py install --deps opencl                         # installs into the project venv
+```
+
+MNN's OpenCL loader dlopens a bare `libOpenCL.so`, but this device ships only `libOpenCL.so.1`, so a
+symlink is required (the app provisions it at startup when run as root, or set it once manually):
+
+```bash
+sudo ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/libOpenCL.so
+```
+
+> **Notes.** GPU-MNN disables OpenCV's OpenCL (T-API) within its process so it does not contend with
+> MNN for the single Mali OpenCL context (they conflict, producing NaN). The first run auto-tunes the
+> OpenCL kernels (~50 s, first frame only). This mode is independent of GPU-OpenCV-OpenCL (unchanged).
 
 ---
 
@@ -280,6 +351,7 @@ This project is licensed under the MIT License.
 - YOLO Vision (https://github.com/ultralytics/ultralytics)
 - OpenCV (https://opencv.org/)
 - ONNX Runtime (https://github.com/microsoft/onnxruntime)
+- MNN (https://github.com/alibaba/MNN)
 - Flask-SocketIO (https://github.com/miguelgrinberg/Flask-SocketIO)
 - rknputop (https://github.com/ramonbroox/rknputop)
 - myrktop (https://github.com/mhl221135/myrktop)

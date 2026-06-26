@@ -73,6 +73,8 @@ class YOLO11InferenceEngine:
                     gpu_opencl=(device_type == "GPU-OPENCV-OPENCL"),
                     cpu_threads=cpu_threads,
                     cpu_affinity=cpu_affinity,
+                    mnn_precision=getattr(app_config, 'MNN_PRECISION', 'low'),
+                    mnn_backend=getattr(app_config, 'MNN_BACKEND', 'OPENCL'),
                 )
             )
             logging.info(f"YOLO11 model loaded: {model_path} on platform: {self.platform}")
@@ -101,7 +103,7 @@ class YOLO11InferenceEngine:
             pad_color=(0, 0, 0),
         )
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.platform in ('pytorch', 'onnx', 'opencv'):
+        if self.platform in ('pytorch', 'onnx', 'opencv', 'mnn'):
             input_data = img.transpose((2, 0, 1))
             input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
             input_data = input_data / 255.
@@ -292,7 +294,7 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, 
     Factory function to create YOLO11 inference engine based on configuration.
 
     Args:
-        device_type: Inference device type ("NPU", "CPU", "CPU-50%", "GPU-OPENCV-OPENCL").
+        device_type: Inference device type ("NPU", "CPU", "CPU-50%", "GPU-OPENCV-OPENCL", "GPU-MNN").
         npu_core_id: NPU core index (0, 1, 2) for explicit core pinning. None = RKNN default (Core 0).
         cpu_threads: onnxruntime intra-op thread cap for a CPU engine (None = all cores, unchanged).
         cpu_affinity: list of core ids to pin the CPU engine to (None = no pinning).
@@ -304,7 +306,12 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, 
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "GPU-OPENCV-OPENCL":
+        # Runs the same ONNX model as CPU on the Mali-G610 via OpenCV-DNN + OpenCL.
         model_path = app_config.ONNX_MODEL_PATH
+        platform = app_config.ROCKCHIP_TARGET
+    elif device_type == "GPU-MNN":
+        # Runs the dedicated .mnn model on the Mali-G610 via MNN + OpenCL.
+        model_path = app_config.MNN_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type in ("CPU", "CPU-50%"):
         model_path = app_config.ONNX_MODEL_PATH

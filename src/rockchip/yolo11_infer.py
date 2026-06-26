@@ -12,10 +12,13 @@
 #   - --video_source added for video file and camera inference
 #   - press 'q' in the display window to stop video/camera inference
 #   - draw(): optional frame_label parameter added for per-frame log tagging
-#   - preprocess_frame(): 'opencv' (Mali GPU via OpenCV-DNN/OpenCL) added to the
-#     CHW float32 branch
+#   - preprocess_frame(): 'opencv' (Mali GPU via OpenCV-DNN/OpenCL) and 'mnn'
+#     (Mali GPU via MNN/OpenCL) added to the CHW float32 branch
 #   - setup_model(): branch added for GPU inference — runs the ONNX model on the
 #     Mali-G610 via OpenCV-DNN + OpenCL (src.processing.opencv_executor)
+#   - setup_model(): branch added for GPU-MNN — runs the .mnn model on the
+#     Mali-G610 via MNN + OpenCL (src.processing.mnn_executor), with backend /
+#     precision forwarded from config (mnn_backend / mnn_precision)
 #   - setup_model(): ONNX/CPU branch forwards cpu_threads/cpu_affinity to
 #     ONNX_model_container so CPU-50% mode can cap the onnxruntime thread pool and
 #     pin cores (capped, non-saturating CPU inference)
@@ -332,7 +335,7 @@ def draw(image, boxes, scores, classes, frame_label=None):
 def preprocess_frame(frame, platform):
     img = co_helper.letter_box(im=frame.copy(), new_shape=(IMG_SIZE[1], IMG_SIZE[0]), pad_color=(0, 0, 0))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    if platform in ['pytorch', 'onnx', 'opencv']:
+    if platform in ['pytorch', 'onnx', 'opencv', 'mnn']:
         input_data = img.transpose((2, 0, 1))
         input_data = input_data.reshape(1, *input_data.shape).astype(np.float32)
         input_data = input_data / 255.
@@ -366,8 +369,17 @@ def setup_model(args):
             intra_op_num_threads=getattr(args, 'cpu_threads', None),
             cpu_affinity=getattr(args, 'cpu_affinity', None),
         )
+    elif model_path.endswith('.mnn'):
+        # GPU-MNN mode: run the .mnn model on the Mali-G610 via MNN + OpenCL.
+        platform = 'mnn'
+        from src.processing.mnn_executor import MNN_model_container
+        model = MNN_model_container(
+            args.model_path,
+            backend=getattr(args, 'mnn_backend', 'OPENCL'),
+            precision=getattr(args, 'mnn_precision', 'low'),
+        )
     else:
-        assert False, '{} is not a rknn/pytorch/onnx model'.format(model_path)
+        assert False, '{} is not a rknn/pytorch/onnx/mnn model'.format(model_path)
     print('Model-{} is {} model, starting inference'.format(model_path, platform))
     return model, platform
 
