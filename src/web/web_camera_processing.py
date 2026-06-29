@@ -2,7 +2,7 @@
 """web_camera_processing.py
 Camera processing with web interface integration.
 Each camera runs in its own thread so all NPU cores work in parallel.
-by fcascan 2025
+by fcascan 2026
 """
 import cv2
 import time
@@ -176,12 +176,12 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
 
     yolo_engines = []
     try:
-        if INFERENCE_DEVICE == "NPU" and len(cameras) > 1:
+        if INFERENCE_DEVICE.startswith("RKNPU") and len(cameras) > 1:
             for idx in range(len(cameras)):
                 core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else 0
                 engine = create_yolo11_engine(INFERENCE_DEVICE, npu_core_id=core_id)
                 yolo_engines.append(engine)
-                logger.info(f"YOLO11 engine {idx} initialized for camera {idx} (NPU Core {core_id})")
+                logger.info(f"YOLO11 engine {idx} initialized for camera {idx} (RKNPU Core {core_id})")
                 if DEBUG_MODE:
                     logging.debug(f"[DEBUG] Camera {idx} engine platform: {engine.platform}")
         else:
@@ -209,7 +209,7 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     threads = []
     for idx, cap in enumerate(cameras):
         engine = yolo_engines[idx if len(yolo_engines) > 1 else 0]
-        core_id = idx if (INFERENCE_DEVICE == "NPU" and NPU_CORE_ASSIGNMENT == "distributed" and len(cameras) > 1) else (0 if INFERENCE_DEVICE == "NPU" else None)
+        core_id = idx if (INFERENCE_DEVICE.startswith("RKNPU") and NPU_CORE_ASSIGNMENT == "distributed" and len(cameras) > 1) else (0 if INFERENCE_DEVICE.startswith("RKNPU") else None)
         t = threading.Thread(
             target=_camera_worker,
             args=(idx, cap, engine, video_manager, processing_active, OUTPUT_DIR, logger),

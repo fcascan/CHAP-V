@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- index.html - YOLO RKNN web interface page (controls, video, system monitor, configuration). by fcascan 2026 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -129,7 +130,7 @@
 
                         <!-- NPU Monitor -->
                         <div class="monitor-card">
-                            <h4>⚡ NPU</h4>
+                            <h4>⚡ RKNPU</h4>
                             <div class="monitor-grid">
                                 <div class="monitor-item">
                                     <span class="monitor-label">Avg Load:</span>
@@ -164,6 +165,28 @@
                             </div>
                             <div class="chart-container">
                                 <canvas id="gpu-chart" class="monitor-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Hailo-8 Monitor -->
+                        <div class="monitor-card">
+                            <h4>🧠 Hailo-8</h4>
+                            <div class="monitor-grid">
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Load:</span>
+                                    <span id="hailo-load" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Temp:</span>
+                                    <span id="hailo-temp" class="monitor-value">--</span>
+                                </div>
+                                <div class="monitor-item">
+                                    <span class="monitor-label">Power:</span>
+                                    <span id="hailo-power" class="monitor-value">--</span>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="hailo-chart" class="monitor-chart"></canvas>
                             </div>
                         </div>
 
@@ -219,17 +242,20 @@
                                 <select id="benchmark-mode" name="benchmark_mode">
                                     <option value="false">Camera Mode</option>
                                     <option value="true">Benchmark Mode</option>
+                                    <option value="loop">Benchmark Loop</option>
                                 </select>
                             </div>
                             
                             <div class="form-group">
                                 <label for="inference-device-select">Inference Device:</label>
                                 <select id="inference-device-select" name="inference_device">
-                                    <option value="NPU">NPU</option>
+                                    <option value="RKNPU-AUTO">RKNPU-Auto</option>
+                                    <option value="RKNPU-DISTRIBUTED">RKNPU-Distributed</option>
                                     <option value="CPU">CPU</option>
                                     <option value="CPU-50%">CPU-50%</option>
                                     <option value="GPU-OPENCV-OPENCL">GPU-OpenCV-OpenCL</option>
                                     <option value="GPU-MNN">GPU-MNN</option>
+                                    <option value="NPU-HAILO8">NPU-Hailo8</option>
                                 </select>
                             </div>
                             
@@ -255,18 +281,17 @@
                             </div>
 
                             <div class="form-group">
+                                <label for="model-hailo8-select">Hailo Model (.hef):</label>
+                                <select id="model-hailo8-select" name="model_hailo8">
+                                    <option value="">Loading models...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
                                 <label for="max-inference-instances">Max Inference Instances:</label>
                                 <input type="number" id="max-inference-instances" name="max_inference_instances" min="1" max="3" value="3">
                             </div>
 
-                            <div class="form-group">
-                                <label for="npu-core-assignment">NPU Core Assignment:</label>
-                                <select id="npu-core-assignment" name="npu_core_assignment">
-                                    <option value="auto">Auto (all on Core 0)</option>
-                                    <option value="distributed">Distributed (one core per instance)</option>
-                                </select>
-                            </div>
-                            
                             <div class="form-group">
                                 <label for="debug-mode">Debug Logging:</label>
                                 <select id="debug-mode" name="debug_mode">

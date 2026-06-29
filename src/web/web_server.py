@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """web_server.py
 Flask web server for YOLO RKNN web interface
-by fcascan 2025
+by fcascan 2026
 """
 import os
 import sys
@@ -163,21 +163,24 @@ class WebServer:
         def get_config():
             """Get current configuration"""
             # Import fresh values to ensure we get the latest configuration
-            from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH, MNN_MODEL_PATH
+            from ..core.config import BENCHMARK_MODE, BENCHMARK_LOOP, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH, MNN_MODEL_PATH, HAILO8_MODEL_PATH
             from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
             from ..core.config import MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, DEBUG_MODE
 
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
+                'benchmark_loop': BENCHMARK_LOOP,
                 'inference_device': INFERENCE_DEVICE,
                 'debug_mode': DEBUG_MODE,
                 'model_rknn': os.path.basename(MODEL_PATH) if MODEL_PATH else '',
                 'model_onnx': os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else '',
                 'model_mnn': os.path.basename(MNN_MODEL_PATH) if MNN_MODEL_PATH else '',
+                'model_hailo8': os.path.basename(HAILO8_MODEL_PATH) if HAILO8_MODEL_PATH else '',
                 'paths': {
                     'model_rknn': MODEL_PATH,
                     'model_onnx': ONNX_MODEL_PATH,
                     'model_mnn': MNN_MODEL_PATH,
+                    'model_hailo8': HAILO8_MODEL_PATH,
                     'video_file': VIDEO_FILE_PATH
                 },
                 'image_config': {
@@ -205,8 +208,14 @@ class WebServer:
                 parser.read(config_path)
                 
                 if 'benchmark_mode' in data:
-                    parser.set('MODE', 'benchmark_mode', str(data['benchmark_mode']).lower())
-                    
+                    # Processing-mode dropdown sends 'false' (camera) | 'true' (benchmark) | 'loop'
+                    # (benchmark on loop). Derive both config keys from that single value.
+                    _mode = str(data['benchmark_mode']).lower()
+                    _loop = (_mode == 'loop')
+                    _bench = _mode in ('true', 'loop')
+                    parser.set('MODE', 'benchmark_mode', str(_bench).lower())
+                    parser.set('MODE', 'benchmark_loop', str(_loop).lower())
+
                 if 'inference_device' in data:
                     parser.set('INFERENCE', 'inference_device', data['inference_device'])
                     
@@ -224,6 +233,11 @@ class WebServer:
                     # Update the model_mnn path to include assets/models/
                     model_path = f"assets/models/{data['model_mnn']}"
                     parser.set('PATHS', 'model_mnn', model_path)
+
+                if 'model_hailo8' in data and data['model_hailo8']:
+                    # Update the model_hailo8 (.hef) path to include assets/models/
+                    model_path = f"assets/models/{data['model_hailo8']}"
+                    parser.set('PATHS', 'model_hailo8', model_path)
 
                 if 'max_inference_instances' in data:
                     parser.set('INFERENCE', 'max_inference_instances', str(data['max_inference_instances']))
@@ -262,11 +276,12 @@ class WebServer:
                 models_dir = os.path.join(BASE_DIR, 'assets', 'models')
                 
                 if not os.path.exists(models_dir):
-                    return jsonify({'rknn_models': [], 'onnx_models': [], 'mnn_models': []})
+                    return jsonify({'rknn_models': [], 'onnx_models': [], 'mnn_models': [], 'hef_models': []})
 
                 rknn_models = []
                 onnx_models = []
                 mnn_models = []
+                hef_models = []
 
                 # Scan for model files
                 for filename in os.listdir(models_dir):
@@ -276,16 +291,20 @@ class WebServer:
                         onnx_models.append(filename)
                     elif filename.lower().endswith('.mnn'):
                         mnn_models.append(filename)
+                    elif filename.lower().endswith('.hef'):
+                        hef_models.append(filename)
 
                 # Sort the lists for better UX
                 rknn_models.sort()
                 onnx_models.sort()
                 mnn_models.sort()
+                hef_models.sort()
 
                 return jsonify({
                     'rknn_models': rknn_models,
                     'onnx_models': onnx_models,
-                    'mnn_models': mnn_models
+                    'mnn_models': mnn_models,
+                    'hef_models': hef_models
                 })
                 
             except Exception as e:
@@ -507,7 +526,23 @@ class WebServer:
             }
         except Exception as e:
             monitor_data['gpu'] = {'error': str(e)}
-            
+
+        # Hailo-8 Information: busy-fraction utilization % + chip temperature + real on-board power (W).
+        # Sampled here at the monitor cadence (~500 ms); never per-frame (PCIe control reads contend
+        # with inference). Idle returns load 0 / temp/power None.
+        try:
+            from ..processing.hailo_executor import get_hailo_stats
+            hs = get_hailo_stats()
+            monitor_data['hailo'] = {
+                'load': hs['utilization'] if hs['utilization'] is not None else 0,
+                'temperature': hs['temperature'],
+                'power': hs.get('power'),
+                'fps': hs['fps'],
+                'available': (hs['utilization'] is not None) or (hs['temperature'] is not None),
+            }
+        except Exception as e:
+            monitor_data['hailo'] = {'error': str(e)}
+
         # Memory Information
         try:
             memory = psutil.virtual_memory()
@@ -583,9 +618,13 @@ class WebServer:
             logger.info(f"Starting YOLO11 processing in {'BENCHMARK' if BENCHMARK_MODE else 'CAMERA'} mode using {actual_device}")
             
             # Update active model info
-            from ..core.config import MODEL_PATH, ONNX_MODEL_PATH
-            if actual_device == "NPU":
+            from ..core.config import MODEL_PATH, ONNX_MODEL_PATH, MNN_MODEL_PATH, HAILO8_MODEL_PATH
+            if actual_device.startswith("RKNPU"):
                 self.active_model_name = os.path.basename(MODEL_PATH) if MODEL_PATH else "Unknown RKNN Model"
+            elif actual_device == "NPU-HAILO8":
+                self.active_model_name = os.path.basename(HAILO8_MODEL_PATH) if HAILO8_MODEL_PATH else "Unknown HEF Model"
+            elif actual_device == "GPU-MNN":
+                self.active_model_name = os.path.basename(MNN_MODEL_PATH) if MNN_MODEL_PATH else "Unknown MNN Model"
             else:
                 self.active_model_name = os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else "Unknown ONNX Model"
             

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """my_htop.py
-by fcascan 2025
+System resource monitor (CPU / RKNPU / GPU load and frequencies) read from sysfs.
+by fcascan 2026
 """
 import os
 import time
@@ -153,8 +154,8 @@ def get_processor_usage_stats(inference_device="NPU", npu_samples=None):
     except Exception:
         stats['cpu'] = None
     
-    # NPU usage
-    if inference_device == "NPU":
+    # RKNPU usage
+    if inference_device.startswith("RKNPU"):
         try:
             if npu_samples and len(npu_samples) > 0:
                 # Use continuous samples collected during processing for accurate statistics

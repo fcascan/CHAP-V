@@ -30,7 +30,13 @@ except ImportError:
 
 
 def _read_system_stats():
-    """Read current CPU/NPU/GPU usage. Returns (cpu_pct, npu_loads, gpu_pct)."""
+    """Read current CPU/NPU/GPU usage from sysfs. Returns (cpu_pct, npu_loads, gpu_pct).
+
+    MUST stay cheap — this runs once per frame. Do NOT read Hailo temperature/power/utilization here:
+    those are PCIe control round-trips that contend with inference on the shared VDevice (they tanked
+    FPS ~35->8). The Hailo per-frame load is derived from the inference duty cycle in the stream loop,
+    and temperature/power are sampled at low cadence by the web System Monitor instead.
+    """
     cpu_pct = psutil.cpu_percent() if _PSUTIL_AVAILABLE else 0.0
     if _HTOP_AVAILABLE:
         npu_loads, _ = get_npu_info()
@@ -44,8 +50,13 @@ def _read_system_stats():
 
 
 def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger,
-                   results_dir=None, run_timestamp=None, npu_core_id=None, benchmark_video=None):
-    """Process one benchmark video stream until it ends or processing is stopped."""
+                   results_dir=None, run_timestamp=None, npu_core_id=None, benchmark_video=None,
+                   benchmark_loop=False):
+    """Process one benchmark video stream until it ends or processing is stopped.
+
+    When benchmark_loop is True the video replays from the start on EOF, so inference continues
+    until the user stops processing (Benchmark Loop mode).
+    """
     # CPU-50%: pin this worker thread to the engine's core set (A76 big cluster). This thread
     # participates in onnxruntime's intra-op pool, so pinning it (plus the pool, inherited at
     # build time) keeps CPU inference off the A55 little cores. No-op for other modes (affinity None).
@@ -66,8 +77,16 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
         frame_start = time.time()
         ret, frame = cap.read()
         if not ret:
-            logger.info(f"Stream {idx}: video completed ({total_frames} frames).")
-            break
+            if benchmark_loop and processing_active_fn():
+                # Benchmark Loop: rewind to the first frame and keep inferring.
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+                if not ret:
+                    logger.info(f"Stream {idx}: unable to rewind video, stopping.")
+                    break
+            else:
+                logger.info(f"Stream {idx}: video completed ({total_frames} frames).")
+                break
 
         start_inf = time.time()
         boxes, classes, scores, _ = engine.detect_objects(frame, stream_idx=idx, frame_idx=total_frames + 1)
@@ -89,6 +108,11 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             cpu_pct, npu_loads, gpu_pct = _read_system_stats()
         except Exception:
             cpu_pct, npu_loads, gpu_pct = 0.0, [0, 0, 0], 0
+        # Hailo has no sysfs load counter; approximate its per-frame load as the inference duty
+        # cycle (detect time / frame time), only when this engine runs on the Hailo. No device I/O.
+        hailo_pct = 0.0
+        if getattr(engine, 'platform', None) == 'hailo' and total_frame_ms > 0:
+            hailo_pct = min(100.0, (inf_time * 1000.0 / total_frame_ms) * 100.0)
         csv_rows.append({
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S") + f".{int((now % 1) * 1000):03d}",
             'frame_number': total_frames + 1,
@@ -99,6 +123,7 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             'npu_core1_percent': npu_loads[1] if len(npu_loads) > 1 else 0,
             'npu_core2_percent': npu_loads[2] if len(npu_loads) > 2 else 0,
             'gpu_usage_percent': gpu_pct,
+            'hailo_usage_percent': round(hailo_pct, 1),
             'fps_actual': round(fps, 2),
             'detections_count': len(boxes) if boxes is not None else 0,
         })
@@ -138,6 +163,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     NPU_CORE_ASSIGNMENT = _cfg.NPU_CORE_ASSIGNMENT
     VIDEO_FILE_PATHS = _cfg.VIDEO_FILE_PATHS
     MAX_INFERENCE_INSTANCES = _cfg.MAX_INFERENCE_INSTANCES
+    BENCHMARK_LOOP = _cfg.BENCHMARK_LOOP
 
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
@@ -163,12 +189,12 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
 
     yolo_engines = []
     try:
-        if INFERENCE_DEVICE == "NPU" and len(caps) > 1:
+        if INFERENCE_DEVICE.startswith("RKNPU") and len(caps) > 1:
             for idx in range(len(caps)):
                 core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else 0
                 engine = create_yolo11_engine(INFERENCE_DEVICE, npu_core_id=core_id)
                 yolo_engines.append(engine)
-                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (NPU Core {core_id})")
+                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (RKNPU Core {core_id})")
                 if DEBUG_MODE:
                     logging.debug(f"[DEBUG] Stream {idx} engine platform: {engine.platform}")
         else:
@@ -203,13 +229,14 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     threads = []
     for idx, cap in enumerate(caps):
         engine = yolo_engines[idx if len(yolo_engines) > 1 else 0]
-        core_id = idx if (INFERENCE_DEVICE == "NPU" and NPU_CORE_ASSIGNMENT == "distributed" and len(caps) > 1) else (0 if INFERENCE_DEVICE == "NPU" else None)
+        core_id = idx if (INFERENCE_DEVICE.startswith("RKNPU") and NPU_CORE_ASSIGNMENT == "distributed" and len(caps) > 1) else (0 if INFERENCE_DEVICE.startswith("RKNPU") else None)
         video_name = os.path.basename(VIDEO_FILE_PATHS[idx]) if idx < len(VIDEO_FILE_PATHS) else None
         t = threading.Thread(
             target=_stream_worker,
             args=(idx, cap, engine, video_manager, processing_active, OUTPUT_DIR, logger),
             kwargs={'results_dir': RESULTS_DIR, 'run_timestamp': run_timestamp,
-                    'npu_core_id': core_id, 'benchmark_video': video_name},
+                    'npu_core_id': core_id, 'benchmark_video': video_name,
+                    'benchmark_loop': BENCHMARK_LOOP},
             daemon=True,
             name=f"benchmark-stream-{idx}",
         )

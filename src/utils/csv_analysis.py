@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """csv_analysis.py
 CSV performance analysis helpers for YOLO RKNN processing.
+by fcascan 2026
 """
 
 import csv
@@ -216,7 +217,7 @@ def print_csv_analysis(csv_filepath):
         core_key = f'core{core_num}'
         core_stats = stats['npu_usage'][core_key]
         active_percentage = (core_stats['active_samples'] / stats['total_frames']) * 100
-        print(f"  NPU Core {core_num}:")
+        print(f"  RKNPU Core {core_num}:")
         print(f"    Mean: {core_stats['mean']:.1f}")
         print(f"    Median: {core_stats['median']:.1f}")
         print(f"    Active samples: {core_stats['active_samples']} ({active_percentage:.1f}%)")

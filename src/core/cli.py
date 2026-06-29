@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""CLI argument parsing and console startup banner."""
+"""cli.py
+CLI argument parsing and console startup banner.
+by fcascan 2026
+"""
 
 import argparse
 import textwrap
@@ -27,7 +30,7 @@ def build_parser():
     """Build the top-level CLI parser."""
 
     description = textwrap.dedent("""\
-        YOLO RKNN Object Detection — Rockchip NPU/GPU/CPU inference engine.
+        YOLO Object Detection — RKNPU / Hailo-8 / GPU / CPU inference engine.
 
         Primary configuration is read from config.ini (project root).
         The settings below are controlled ONLY via config.ini and are not
@@ -37,10 +40,9 @@ def build_parser():
             benchmark_mode         true = video file source | false = live cameras
 
           [INFERENCE]
-            inference_device       NPU | GPU | CPU
+            inference_device       RKNPU-Auto | RKNPU-Distributed | CPU | CPU-50% | GPU-OpenCV-OpenCL | GPU-MNN | NPU-Hailo8
             rockchip_target        rk3562 | rk3566 | rk3568 | rk3576 | rk3588 | rv1126b | rv1109 | rv1126 | rk1808
-            max_inference_instances  number of parallel streams (1..3)
-            npu_core_assignment    auto (all on Core 0) | distributed (stream N -> Core N)
+            max_inference_instances  number of parallel streams (1..3; RKNPU-Distributed pins stream N -> RKNN core N)
             obj_threshold          detection confidence threshold
             nms_threshold          NMS IoU threshold
 
@@ -138,7 +140,7 @@ def print_console_banner(args):
     print(f"  Device            : {INFERENCE_DEVICE}")
     print(f"  Rockchip target   : {ROCKCHIP_TARGET}")
     print(f"  Instances         : {MAX_INFERENCE_INSTANCES}")
-    print(f"  NPU core assign   : {NPU_CORE_ASSIGNMENT}")
+    print(f"  RKNPU core assign : {NPU_CORE_ASSIGNMENT}")
     if MAX_INFERENCE_INSTANCES == 1:
         print(f"  Model             : {args.model_path}")
         print(f"  Video source      : {args.video_source}")

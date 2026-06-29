@@ -1,4 +1,6 @@
-// YOLO RKNN Web Interface JavaScript
+// script.js
+// YOLO RKNN web interface front-end: controls, live video, system-monitor charts, config panel.
+// by fcascan 2026
 
 class YOLOWebInterface {
     constructor() {
@@ -9,8 +11,9 @@ class YOLOWebInterface {
         this.charts = {};
         this.dataHistory = {
             cpu_cores: [],
-            npu_cores: [], 
+            npu_cores: [],
             gpu: [],
+            hailo: [],
             memory: [],
             temperature: []
         };
@@ -170,6 +173,18 @@ class YOLOWebInterface {
                 });
             }
 
+            // Populate Hailo (.hef) models dropdown
+            const hailoSelect = document.getElementById('model-hailo8-select');
+            if (hailoSelect && models.hef_models) {
+                hailoSelect.innerHTML = '';
+                models.hef_models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    hailoSelect.appendChild(option);
+                });
+            }
+
             console.log('Available models loaded:', models);
             
         } catch (error) {
@@ -189,12 +204,12 @@ class YOLOWebInterface {
             const modelRknnSelect = document.getElementById('model-rknn-select');
             const modelOnnxSelect = document.getElementById('model-onnx-select');
             const modelMnnSelect = document.getElementById('model-mnn-select');
+            const modelHailo8Select = document.getElementById('model-hailo8-select');
             const maxInferenceInstances = document.getElementById('max-inference-instances');
-            const npuCoreAssignment = document.getElementById('npu-core-assignment');
             const debugMode = document.getElementById('debug-mode');
 
             if (benchmarkMode) {
-                benchmarkMode.value = config.benchmark_mode.toString();
+                benchmarkMode.value = config.benchmark_loop ? 'loop' : config.benchmark_mode.toString();
             }
             if (inferenceDeviceSelect) {
                 inferenceDeviceSelect.value = config.inference_device;
@@ -212,11 +227,9 @@ class YOLOWebInterface {
             selectModel(modelRknnSelect, config.model_rknn);
             selectModel(modelOnnxSelect, config.model_onnx);
             selectModel(modelMnnSelect, config.model_mnn);
+            selectModel(modelHailo8Select, config.model_hailo8);
             if (maxInferenceInstances && config.camera_config) {
                 maxInferenceInstances.value = config.camera_config.max_inference_instances;
-            }
-            if (npuCoreAssignment && config.camera_config) {
-                npuCoreAssignment.value = config.camera_config.npu_core_assignment || 'auto';
             }
             if (debugMode && config.debug_mode !== undefined) {
                 debugMode.value = config.debug_mode.toString();
@@ -231,7 +244,8 @@ class YOLOWebInterface {
             const infoDevice = document.getElementById('info-device');
             
             if (infoMode) {
-                infoMode.textContent = config.benchmark_mode ? 'Benchmark' : 'Camera';
+                infoMode.textContent = config.benchmark_loop ? 'Benchmark Loop'
+                    : (config.benchmark_mode ? 'Benchmark' : 'Camera');
             }
             if (infoDevice) {
                 infoDevice.textContent = config.inference_device;
@@ -264,13 +278,14 @@ class YOLOWebInterface {
             const rawInstances = parseInt(formData.get('max_inference_instances'));
             const clampedInstances = Math.min(3, Math.max(1, rawInstances || 1));
             const config = {
-                benchmark_mode: formData.get('benchmark_mode') === 'true',
+                // raw dropdown value: 'false' | 'true' | 'loop' (server derives benchmark_mode + benchmark_loop)
+                benchmark_mode: formData.get('benchmark_mode'),
                 inference_device: formData.get('inference_device'),
                 model_rknn: formData.get('model_rknn'),
                 model_onnx: formData.get('model_onnx'),
                 model_mnn: formData.get('model_mnn'),
+                model_hailo8: formData.get('model_hailo8'),
                 max_inference_instances: clampedInstances,
-                npu_core_assignment: formData.get('npu_core_assignment'),
                 debug_mode: formData.get('debug_mode') === 'true',
             };
             
@@ -739,7 +754,7 @@ class YOLOWebInterface {
             const npuDatasets = [];
             for (let i = 0; i < this.coreCount.npu; i++) {
                 npuDatasets.push({
-                    label: `NPU Core ${i}`,
+                    label: `RKNPU Core ${i}`,
                     data: new Array(this.maxDataPoints).fill(0),
                     borderColor: npuColors[i],
                     backgroundColor: npuColors[i] + '20',
@@ -821,6 +836,20 @@ class YOLOWebInterface {
                     data: Array(this.maxDataPoints).fill(0),
                     borderColor: '#9b59b6',
                     backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                    fill: true
+                }]
+            }
+        });
+
+        // Hailo-8 Chart (utilization busy-fraction %)
+        this.charts.hailo = new Chart(document.getElementById('hailo-chart').getContext('2d'), {
+            ...chartConfig,
+            data: {
+                labels: Array(this.maxDataPoints).fill(''),
+                datasets: [{
+                    data: Array(this.maxDataPoints).fill(0),
+                    borderColor: '#1abc9c',
+                    backgroundColor: 'rgba(26, 188, 156, 0.1)',
                     fill: true
                 }]
             }
@@ -943,7 +972,22 @@ class YOLOWebInterface {
             document.getElementById('gpu-load').textContent = 'N/A';
             document.getElementById('gpu-freq').textContent = '--';
         }
-        
+
+        // Update Hailo-8 (busy-fraction utilization % + chip temperature + real on-board power W)
+        if (data.hailo && !data.hailo.error && data.hailo.available) {
+            const hailoLoad = (data.hailo.load || 0).toFixed(1);
+            this.updateValueWithColor('hailo-load', `${hailoLoad}%`, data.hailo.load || 0);
+            document.getElementById('hailo-temp').textContent =
+                (data.hailo.temperature != null) ? `${data.hailo.temperature}°C` : '--';
+            document.getElementById('hailo-power').textContent =
+                (data.hailo.power != null) ? `${data.hailo.power} W` : '--';
+            this.updateChart('hailo', data.hailo.load || 0);
+        } else {
+            document.getElementById('hailo-load').textContent = 'N/A';
+            document.getElementById('hailo-temp').textContent = '--';
+            document.getElementById('hailo-power').textContent = '--';
+        }
+
         // Update Memory
         if (data.memory && !data.memory.error) {
             const memUsed = data.memory.used_gb.toFixed(1);

@@ -302,7 +302,7 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, 
     Returns:
         YOLO11InferenceEngine instance
     """
-    if device_type == "NPU":
+    if device_type.startswith("RKNPU"):
         model_path = app_config.MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type == "GPU-OPENCV-OPENCL":
@@ -312,6 +312,10 @@ def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, 
     elif device_type == "GPU-MNN":
         # Runs the dedicated .mnn model on the Mali-G610 via MNN + OpenCL.
         model_path = app_config.MNN_MODEL_PATH
+        platform = app_config.ROCKCHIP_TARGET
+    elif device_type == "NPU-HAILO8":
+        # Runs the dedicated .hef model on the Hailo-8 external NPU via HailoRT.
+        model_path = app_config.HAILO8_MODEL_PATH
         platform = app_config.ROCKCHIP_TARGET
     elif device_type in ("CPU", "CPU-50%"):
         model_path = app_config.ONNX_MODEL_PATH

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """config.py
+Loads and reloads config.ini into module globals for the YOLO RKNN/NPU project.
 by fcascan 2026
 """
 import os
@@ -55,11 +56,11 @@ def _parse_color(value, fallback):
 
 def load_config(is_reload=False):
     """Load or reload configuration from config.ini file"""
-    global parser, BENCHMARK_MODE, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
+    global parser, BENCHMARK_MODE, BENCHMARK_LOOP, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
     global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
     global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME
-    global MNN_MODEL_PATH, MNN_PRECISION, MNN_BACKEND
+    global MNN_MODEL_PATH, MNN_PRECISION, MNN_BACKEND, HAILO8_MODEL_PATH
 
     # Clear and re-read the config file
     if is_reload:
@@ -68,11 +69,20 @@ def load_config(is_reload=False):
     
     # Load all configuration values
     BENCHMARK_MODE = parser.getboolean("MODE", "benchmark_mode", fallback=False)
-    INFERENCE_DEVICE = parser.get("INFERENCE", "inference_device", fallback="NPU").strip().upper()
+    # Benchmark Loop: same as benchmark mode but the selected video(s) replay on a loop until the
+    # user stops processing (continuous inference). Implies benchmark_mode.
+    BENCHMARK_LOOP = parser.getboolean("MODE", "benchmark_loop", fallback=False)
+    if BENCHMARK_LOOP:
+        BENCHMARK_MODE = True
+    INFERENCE_DEVICE = parser.get("INFERENCE", "inference_device", fallback="RKNPU-AUTO").strip().upper()
     # Backward-compat: the old "GPU" device is now "GPU-OPENCV-OPENCL" (a future GPU-MNN mode
     # will be a separate device), so legacy configs keep working.
     if INFERENCE_DEVICE == "GPU":
         INFERENCE_DEVICE = "GPU-OPENCV-OPENCL"
+    # Backward-compat: the old "NPU" mode (which used a separate npu_core_assignment setting) is now
+    # two explicit device modes, RKNPU-AUTO / RKNPU-DISTRIBUTED. Legacy "NPU"/"RKNPU" -> RKNPU-AUTO.
+    if INFERENCE_DEVICE in ("NPU", "RKNPU"):
+        INFERENCE_DEVICE = "RKNPU-AUTO"
     ROCKCHIP_TARGET = parser.get("INFERENCE", "rockchip_target", fallback="rk3588").strip().lower()
     OBJ_THRESHOLD = parser.getfloat("INFERENCE", "obj_threshold", fallback=0.25)
     NMS_THRESHOLD = parser.getfloat("INFERENCE", "nms_threshold", fallback=0.45)
@@ -92,6 +102,9 @@ def load_config(is_reload=False):
 
     model_mnn_cfg = parser.get("PATHS", "model_mnn", fallback="assets/models/detectS2.mnn")
     MNN_MODEL_PATH = os.path.join(BASE_DIR, model_mnn_cfg)
+
+    model_hailo8_cfg = parser.get("PATHS", "model_hailo8", fallback="assets/models/detectS2.hef")
+    HAILO8_MODEL_PATH = os.path.join(BASE_DIR, model_hailo8_cfg)
 
     # Load image settings
     img_width = parser.getint("IMAGE", "img_width", fallback=640)
@@ -114,8 +127,10 @@ def load_config(is_reload=False):
     
     # Number of parallel inference instances (one per camera/stream)
     MAX_INFERENCE_INSTANCES = parser.getint("INFERENCE", "max_inference_instances", fallback=3)
-    # "auto" = all instances on Core 0 (RKNN default); "distributed" = instance N -> Core N
-    NPU_CORE_ASSIGNMENT = parser.get("INFERENCE", "npu_core_assignment", fallback="auto").strip().lower()
+    # Core assignment is now encoded in the device mode (RKNPU-AUTO = all instances on Core 0;
+    # RKNPU-DISTRIBUTED = instance N -> RKNN core N), not a separate setting. Derive it here for the
+    # multi-core distribution logic in the web video/camera workers.
+    NPU_CORE_ASSIGNMENT = "distributed" if INFERENCE_DEVICE == "RKNPU-DISTRIBUTED" else "auto"
 
     # ---- CPU-50% mode (inference_device = CPU-50%) ----
     # Like CPU mode, but capped so it does NOT saturate all 8 cores — the device stays usable.
@@ -205,6 +220,7 @@ def load_config(is_reload=False):
     logging.info(
         f"[CONFIG] Configuration {action}:\n"
         f"  benchmark_mode = {BENCHMARK_MODE}\n"
+        f"  benchmark_loop = {BENCHMARK_LOOP}\n"
         f"  inference_device = {INFERENCE_DEVICE}\n"
         f"  rockchip_target = {ROCKCHIP_TARGET}\n"
         f"  obj_threshold = {OBJ_THRESHOLD}\n"
@@ -220,6 +236,7 @@ def load_config(is_reload=False):
         f"  model_rknn = {os.path.basename(MODEL_PATH)}\n"
         f"  model_onnx = {os.path.basename(ONNX_MODEL_PATH)}\n"
         f"  model_mnn = {os.path.basename(MNN_MODEL_PATH)}\n"
+        f"  model_hailo8 = {os.path.basename(HAILO8_MODEL_PATH)}\n"
         f"  model_labels = {_labels_file}\n"
         f"  classes ({len(CLASSES)}) = [{', '.join(CLASSES)}]\n"
         f"  benchmark_videos = [{_videos}]\n"
@@ -240,6 +257,7 @@ def load_config(is_reload=False):
     # Return updated config for convenience
     return {
         'benchmark_mode': BENCHMARK_MODE,
+        'benchmark_loop': BENCHMARK_LOOP,
         'inference_device': INFERENCE_DEVICE,
         'debug_mode': DEBUG_MODE,
         'overlay_enabled': OVERLAY_ENABLED,

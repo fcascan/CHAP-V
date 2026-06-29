@@ -19,6 +19,9 @@
 #   - setup_model(): branch added for GPU-MNN — runs the .mnn model on the
 #     Mali-G610 via MNN + OpenCL (src.processing.mnn_executor), with backend /
 #     precision forwarded from config (mnn_backend / mnn_precision)
+#   - setup_model(): branch added for NPU-Hailo8 — runs the .hef model on the
+#     Hailo-8 external NPU via HailoRT (src.processing.hailo_executor); Hailo uses
+#     the same NHWC-uint8 input path as RKNN (not the CHW float32 branch)
 #   - setup_model(): ONNX/CPU branch forwards cpu_threads/cpu_affinity to
 #     ONNX_model_container so CPU-50% mode can cap the onnxruntime thread pool and
 #     pin cores (capped, non-saturating CPU inference)
@@ -378,8 +381,13 @@ def setup_model(args):
             backend=getattr(args, 'mnn_backend', 'OPENCL'),
             precision=getattr(args, 'mnn_precision', 'low'),
         )
+    elif model_path.endswith('.hef'):
+        # NPU-Hailo8 mode: run the .hef model on the Hailo-8 external NPU via HailoRT.
+        platform = 'hailo'
+        from src.processing.hailo_executor import Hailo_model_container
+        model = Hailo_model_container(args.model_path)
     else:
-        assert False, '{} is not a rknn/pytorch/onnx/mnn model'.format(model_path)
+        assert False, '{} is not a rknn/pytorch/onnx/mnn/hef model'.format(model_path)
     print('Model-{} is {} model, starting inference'.format(model_path, platform))
     return model, platform
 

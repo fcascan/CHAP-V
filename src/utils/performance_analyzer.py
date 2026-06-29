@@ -175,7 +175,9 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         fps_data = data['fps_actual']
         npu_core0 = data['npu_core0_percent']
         cpu_usage = data['cpu_usage_percent']
+        # GPU/Hailo usage are present in every mode's CSV; tolerate older files that lack them.
         gpu_usage = data.get('gpu_usage_percent', [0.0] * len(data['frame_number']))
+        hailo_usage = data.get('hailo_usage_percent', [0.0] * len(data['frame_number']))
 
         # Calculate statistics
         inf_mean = mean(inference_times)
@@ -185,6 +187,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         npu_mean = mean(npu_core0)
         cpu_mean = mean(cpu_usage)
         gpu_mean = mean(gpu_usage)
+        hailo_mean = mean(hailo_usage) if hailo_usage else 0.0
         
         # Draw title
         title = f"Performance Analysis Report"
@@ -208,7 +211,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
             y_meta += 18
 
         if npu_core_id is not None:
-            draw.text((20, y_meta), f"NPU Core: {npu_core_id}", fill='black', font=font)
+            draw.text((20, y_meta), f"RKNPU Core: {npu_core_id}", fill='black', font=font)
             y_meta += 18
         
         _model_display = model_name or (os.path.basename(metadata['model_path']) if 'model_path' in metadata else None)
@@ -427,7 +430,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         graph4_width = (img_width - 60) // 2  # two columns with 20px margins and 20px gap
         graph4_height = 140
         draw.rectangle([graph4_x, graph4_y, graph4_x + graph4_width, graph4_y + graph4_height], outline='black', width=2)
-        _npu_title = f"NPU Core {npu_core_id} Usage (%)" if npu_core_id is not None else "NPU Usage (%)"
+        _npu_title = f"RKNPU Core {npu_core_id} Usage (%)" if npu_core_id is not None else "RKNPU Usage (%)"
         draw.text((graph4_x, graph4_y - 25), _npu_title, fill='black', font=font_large)
         
         if len(npu_core0) > 0:
@@ -542,20 +545,17 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         draw.text((graph4_x + 5, graph4_y + graph4_height + 30), f"Avg: {npu_mean:.1f}%", fill='darkorange', font=font)
         draw.text((graph5_x + 5, graph5_y + graph5_height + 30), f"Avg: {cpu_mean:.1f}%", fill='darkviolet', font=font)
         
-        # Graph 3: NPU vs CPU Usage with average lines (third row, full width)
+        # Graph 3 slot: Hailo Usage (%) individual graph (third row, RIGHT). The cross-backend
+        # comparison now lives full-width at the bottom (see "Comparison (%)" below).
         graph3_y = graph4_y + graph4_height + graph_row_sep
         graph3_height = 150
-        # Right column (swapped with the GPU Usage graph, which now sits on the left at x=20)
         graph3_x = 720
 
         draw.rectangle([graph3_x, graph3_y, graph3_x + graph_width, graph3_y + graph3_height], outline='black', width=2)
-        _cmp_title = (f"NPU Core {npu_core_id} vs CPU vs GPU Usage Comparison (%)" if npu_core_id is not None
-                      else "NPU vs CPU vs GPU Usage Comparison (%)")
-        draw.text((graph3_x, graph3_y - 25), _cmp_title, fill='black', font=font_large)
+        draw.text((graph3_x, graph3_y - 25), "Hailo Usage (%)", fill='black', font=font_large)
 
-        if len(npu_core0) > 0 and len(cpu_usage) > 0:
-            sampled_npu = npu_core0[::step][:sample_size]
-            sampled_cpu = cpu_usage[::step][:sample_size]
+        if len(hailo_usage) > 0:
+            sampled_hailo = hailo_usage[::step][:sample_size]
 
             # Draw grid lines
             for i in range(5):
@@ -564,15 +564,15 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = 100 - (i * 25)
                 draw.text((graph3_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
 
-            # Draw time axis labels for comparison graph
-            sampled_count_cmp = len(sampled_npu)
-            sample_indices_cmp = [min(i * step, len(npu_core0) - 1) for i in range(sampled_count_cmp)]
-            label_interval_cmp = max(1, sampled_count_cmp // 8) if sampled_count_cmp > 0 else 1
-            for idx_i in range(0, sampled_count_cmp, label_interval_cmp):
+            # Draw time axis labels
+            sampled_count_h = len(sampled_hailo)
+            sample_indices_h = [min(i * step, len(hailo_usage) - 1) for i in range(sampled_count_h)]
+            label_interval_h = max(1, sampled_count_h // 8) if sampled_count_h > 0 else 1
+            for idx_i in range(0, sampled_count_h, label_interval_h):
                 if idx_i == 0:
                     continue
-                idx = sample_indices_cmp[idx_i]
-                x_pos = graph3_x + (idx_i * graph_width // sampled_count_cmp)
+                idx = sample_indices_h[idx_i]
+                x_pos = graph3_x + (idx_i * graph_width // sampled_count_h)
                 draw.line([x_pos, graph3_y + graph3_height, x_pos, graph3_y + graph3_height + 5], fill='black', width=1)
                 label = None
                 if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
@@ -589,33 +589,20 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                     if sec > 0:
                         label = f"{int(sec)}s"
                 if label:
-                    draw.text((x_pos - 15, graph3_y + graph3_height + 8), label, fill='gray', font=small_font)
+                    draw.text((x_pos - 12, graph3_y + graph3_height + 8), label, fill='gray', font=small_font)
 
-            if len(sampled_npu) > 1:
-                # NPU line
-                for i in range(len(sampled_npu) - 1):
-                    x1 = graph3_x + (i * graph_width // len(sampled_npu))
-                    y1 = graph3_y + graph3_height - int(sampled_npu[i] * graph3_height / 100)
-                    x2 = graph3_x + ((i + 1) * graph_width // len(sampled_npu))
-                    y2 = graph3_y + graph3_height - int(sampled_npu[i + 1] * graph3_height / 100)
-                    draw.line([x1, y1, x2, y2], fill='orange', width=2)
+            if len(sampled_hailo) > 1:
+                for i in range(len(sampled_hailo) - 1):
+                    x1 = graph3_x + (i * graph_width // len(sampled_hailo))
+                    y1 = graph3_y + graph3_height - int(sampled_hailo[i] * graph3_height / 100)
+                    x2 = graph3_x + ((i + 1) * graph_width // len(sampled_hailo))
+                    y2 = graph3_y + graph3_height - int(sampled_hailo[i + 1] * graph3_height / 100)
+                    draw.line([x1, y1, x2, y2], fill='teal', width=2)
 
-                # CPU line
-                for i in range(len(sampled_cpu) - 1):
-                    x1 = graph3_x + (i * graph_width // len(sampled_cpu))
-                    y1 = graph3_y + graph3_height - int(sampled_cpu[i] * graph3_height / 100)
-                    x2 = graph3_x + ((i + 1) * graph_width // len(sampled_cpu))
-                    y2 = graph3_y + graph3_height - int(sampled_cpu[i + 1] * graph3_height / 100)
-                    draw.line([x1, y1, x2, y2], fill='purple', width=2)
+                hailo_avg_y = graph3_y + graph3_height - int(hailo_mean * graph3_height / 100)
+                draw_dashed_line(draw, (graph3_x, hailo_avg_y), (graph3_x + graph_width, hailo_avg_y), fill='teal')
 
-                # GPU line (red) — shows the Mali load alongside NPU/CPU in one chart
-                sampled_gpu_cmp = gpu_usage[::step][:sample_size]
-                for i in range(len(sampled_gpu_cmp) - 1):
-                    x1 = graph3_x + (i * graph_width // len(sampled_gpu_cmp))
-                    y1 = graph3_y + graph3_height - int(sampled_gpu_cmp[i] * graph3_height / 100)
-                    x2 = graph3_x + ((i + 1) * graph_width // len(sampled_gpu_cmp))
-                    y2 = graph3_y + graph3_height - int(sampled_gpu_cmp[i + 1] * graph3_height / 100)
-                    draw.line([x1, y1, x2, y2], fill='red', width=2)
+        draw.text((graph3_x + 5, graph3_y + graph3_height + 30), f"Avg: {hailo_mean:.1f}%", fill='teal', font=font)
 
                 # Draw dashed average lines
                 # npu_avg_y = graph3_y + graph3_height - int(npu_mean * graph3_height / 100)
@@ -686,9 +673,64 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
 
         draw.text((graph6_x + 5, graph6_y + graph6_height + 30), f"Avg: {gpu_mean:.1f}%", fill='darkred', font=font)
 
-        # Legend (updated position and content)
+        # Comparison (%) — full-width bottom timeline overlaying CPU / RKNPU / GPU / Hailo usage.
+        cmp_y = graph3_y + graph3_height + graph_row_sep
+        cmp_x = 20
+        cmp_width = img_width - 40
+        cmp_height = 320
+        draw.rectangle([cmp_x, cmp_y, cmp_x + cmp_width, cmp_y + cmp_height], outline='black', width=2)
+        draw.text((cmp_x, cmp_y - 25), "Comparison (%)", fill='black', font=font_large)
+
+        for i in range(5):
+            y_grid = cmp_y + (i * cmp_height // 4)
+            draw.line([cmp_x, y_grid, cmp_x + cmp_width, y_grid], fill='lightgray', width=1)
+            val = 100 - (i * 25)
+            draw.text((cmp_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
+
+        _ref = cpu_usage if len(cpu_usage) > 0 else npu_core0
+        if len(_ref) > 0:
+            sampled_ref = _ref[::step][:sample_size]
+            sc = len(sampled_ref)
+            si = [min(i * step, len(_ref) - 1) for i in range(sc)]
+            li = max(1, sc // 12) if sc > 0 else 1
+            for idx_i in range(0, sc, li):
+                if idx_i == 0:
+                    continue
+                idx = si[idx_i]
+                x_pos = cmp_x + (idx_i * cmp_width // sc)
+                draw.line([x_pos, cmp_y + cmp_height, x_pos, cmp_y + cmp_height + 5], fill='black', width=1)
+                label = None
+                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
+                    diff = (parsed_ts[idx] - first_ts).total_seconds()
+                    if diff > 0:
+                        if unit == 's':
+                            label = f"{int(diff)}s"
+                        elif unit == 'm':
+                            label = f"{int(diff // 60)}m"
+                        else:
+                            label = f"{int(diff // 3600)}h"
+                else:
+                    sec = idx / 30
+                    if sec > 0:
+                        label = f"{int(sec)}s"
+                if label:
+                    draw.text((x_pos - 12, cmp_y + cmp_height + 8), label, fill='gray', font=small_font)
+
+            # Overlay one line per backend (0% when a backend is not the active one).
+            for _series, _color in ((cpu_usage, 'purple'), (npu_core0, 'orange'), (gpu_usage, 'red'), (hailo_usage, 'teal')):
+                _samp = _series[::step][:sample_size]
+                if len(_samp) < 2:
+                    continue
+                for i in range(len(_samp) - 1):
+                    x1 = cmp_x + (i * cmp_width // len(_samp))
+                    y1 = cmp_y + cmp_height - int(_samp[i] * cmp_height / 100)
+                    x2 = cmp_x + ((i + 1) * cmp_width // len(_samp))
+                    y2 = cmp_y + cmp_height - int(_samp[i + 1] * cmp_height / 100)
+                    draw.line([x1, y1, x2, y2], fill=_color, width=2)
+
+        # Legend (below the Comparison chart)
         legend_x = 20
-        legend_y = graph3_y + graph3_height + 90
+        legend_y = cmp_y + cmp_height + 25
         draw.text((legend_x, legend_y), "LEGEND:", fill='black', font=font_large)
         
         # Solid lines
@@ -699,7 +741,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         draw.text((legend_x + 40, legend_y + 45), "FPS Over Time", fill='black', font=font)
         
         draw.line([legend_x, legend_y + 70, legend_x + 30, legend_y + 70], fill='orange', width=3)
-        draw.text((legend_x + 40, legend_y + 65), "NPU Usage (%)", fill='black', font=font)
+        draw.text((legend_x + 40, legend_y + 65), "RKNPU Usage (%)", fill='black', font=font)
         
         draw.line([legend_x, legend_y + 90, legend_x + 30, legend_y + 90], fill='purple', width=3)
         draw.text((legend_x + 40, legend_y + 85), "CPU Usage (%)", fill='black', font=font)
@@ -707,21 +749,24 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         draw.line([legend_x, legend_y + 110, legend_x + 30, legend_y + 110], fill='red', width=3)
         draw.text((legend_x + 40, legend_y + 105), "GPU Usage (%)", fill='black', font=font)
 
-        # Dashed lines
-        draw_dashed_line(draw, (legend_x, legend_y + 130), (legend_x + 30, legend_y + 130), fill='blue')
-        draw.text((legend_x + 40, legend_y + 125), "Inference Time Average", fill='black', font=font)
+        draw.line([legend_x, legend_y + 130, legend_x + 30, legend_y + 130], fill='teal', width=3)
+        draw.text((legend_x + 40, legend_y + 125), "Hailo Usage (%)", fill='black', font=font)
 
-        draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='green')
-        draw.text((legend_x + 40, legend_y + 145), "FPS Average", fill='black', font=font)
+        # Dashed lines (shifted down to make room for the Hailo Usage entry above)
+        draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='blue')
+        draw.text((legend_x + 40, legend_y + 145), "Inference Time Average", fill='black', font=font)
 
-        draw_dashed_line(draw, (legend_x, legend_y + 170), (legend_x + 30, legend_y + 170), fill='darkorange')
-        draw.text((legend_x + 40, legend_y + 165), "NPU Average", fill='black', font=font)
+        draw_dashed_line(draw, (legend_x, legend_y + 170), (legend_x + 30, legend_y + 170), fill='green')
+        draw.text((legend_x + 40, legend_y + 165), "FPS Average", fill='black', font=font)
 
-        draw_dashed_line(draw, (legend_x, legend_y + 190), (legend_x + 30, legend_y + 190), fill='darkviolet')
-        draw.text((legend_x + 40, legend_y + 185), "CPU Average", fill='black', font=font)
+        draw_dashed_line(draw, (legend_x, legend_y + 190), (legend_x + 30, legend_y + 190), fill='darkorange')
+        draw.text((legend_x + 40, legend_y + 185), "NPU Average", fill='black', font=font)
 
-        draw_dashed_line(draw, (legend_x, legend_y + 210), (legend_x + 30, legend_y + 210), fill='darkred')
-        draw.text((legend_x + 40, legend_y + 205), "GPU Average", fill='black', font=font)
+        draw_dashed_line(draw, (legend_x, legend_y + 210), (legend_x + 30, legend_y + 210), fill='darkviolet')
+        draw.text((legend_x + 40, legend_y + 205), "CPU Average", fill='black', font=font)
+
+        draw_dashed_line(draw, (legend_x, legend_y + 230), (legend_x + 30, legend_y + 230), fill='darkred')
+        draw.text((legend_x + 40, legend_y + 225), "GPU Average", fill='black', font=font)
         
         # Save image with higher DPI for better readability (keep pixel sizes unchanged)
         try:
@@ -785,7 +830,7 @@ def print_csv_analysis(csv_filepath):
         
         for core_idx, core_data in enumerate([npu_core0, npu_core1, npu_core2]):
             active_samples = [x for x in core_data if x > 0]
-            print(f"  NPU Core {core_idx}:")
+            print(f"  RKNPU Core {core_idx}:")
             print(f"    Mean: {mean(core_data):.1f}")
             print(f"    Median: {median(core_data):.1f}")
             print(f"    Active samples: {len(active_samples)} ({len(active_samples)/len(core_data)*100:.1f}%)")

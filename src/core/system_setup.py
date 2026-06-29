@@ -36,20 +36,20 @@ def setup_web_system():
 
 def setup_inference_device(inference_device):
     """Setup and configure the inference device (NPU, GPU, or CPU)."""
-    if inference_device == "NPU":
-        # NPU setup
+    if inference_device.startswith("RKNPU"):
+        # RKNPU setup (RK3588 on-chip NPU via RKNN; modes RKNPU-AUTO / RKNPU-DISTRIBUTED)
         if check_rknn_availability():
             try:
                 from importlib import import_module
                 RKNNLite = import_module("rknnlite.api.rknn_lite").RKNNLite
                 from src.utils.rknn_post_processing import post_process
                 from src.utils.my_htop import log_npu_usage
-                print("[INFO] RKNN NPU libraries loaded successfully.")
-                return "NPU", True, {"RKNNLite": RKNNLite, "post_process": post_process, "log_npu_usage": log_npu_usage}
+                print("[INFO] RKNN (RKNPU) libraries loaded successfully.")
+                return inference_device, True, {"RKNNLite": RKNNLite, "post_process": post_process, "log_npu_usage": log_npu_usage}
             except ImportError as e:
-                print(f"[WARNING] RKNN NPU libraries could not be imported: {e}")
-        
-        print("[INFO] NPU not available, switching to CPU inference mode...")
+                print(f"[WARNING] RKNN (RKNPU) libraries could not be imported: {e}")
+
+        print("[INFO] RKNPU not available, switching to CPU inference mode...")
         return "CPU", False, {}
     
     elif inference_device == "GPU-OPENCV-OPENCL":
@@ -101,6 +101,25 @@ def setup_inference_device(inference_device):
         except Exception as e:
             print(f"[WARNING] GPU-MNN setup failed: {e}")
         print("[INFO] GPU-MNN not available, switching to CPU inference mode...")
+        return "CPU", False, {}
+
+    elif inference_device == "NPU-HAILO8":
+        # Runs a .hef on the Hailo-8 external NPU (M.2/PCIe) via HailoRT + pyhailort.
+        import os as _os
+        try:
+            from importlib import import_module
+            import_module("hailo_platform")
+            if _os.path.exists("/dev/hailo0"):
+                print("[INFO] NPU-Hailo8 available: HailoRT + Hailo-8 on /dev/hailo0.")
+                return "NPU-HAILO8", True, {"hailo_available": True}
+            print("[WARNING] pyhailort present but /dev/hailo0 missing — is the HailoRT PCIe "
+                  "driver loaded? (sudo modprobe hailo_pci)")
+        except ImportError:
+            print("[WARNING] pyhailort (hailo_platform) not installed — NPU-Hailo8 requires the "
+                  "HailoRT runtime + wheel (see CLAUDE.md / README).")
+        except Exception as e:
+            print(f"[WARNING] NPU-Hailo8 setup failed: {e}")
+        print("[INFO] NPU-Hailo8 not available, switching to CPU inference mode...")
         return "CPU", False, {}
 
     # For CPU mode or fallback

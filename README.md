@@ -1,14 +1,14 @@
 # Python YOLO RKNN/NPU
 
 Real-time object detection using YOLO v11 models on RK3588 (with Orange Pi 5 Max).
-A project for comparison between CPU, GPU & NPU inference with **Web Interface** support.
+A project for comparison between CPU, GPU, RKNPU & Hailo-8 inference with **Web Interface** support.
 
 ## Features
 
 - **Web Interface**: Modern web UI with real-time video streaming and console output
-- **Multi-camera support**: Up to 3 USB cameras with NPU core assignment
+- **Multi-camera support**: Up to 3 USB cameras with RKNPU core assignment
 - **Auto-installation**: Intelligent dependency detection and installation
-- **NPU acceleration**: RKNN toolkit with CPU fallback
+- **RKNPU & Hailo-8 acceleration**: RKNN toolkit / HailoRT with CPU fallback
 - **Real-time inference**: Live object detection with statistics
 - **Web Configuration**: Change settings and control processing via web interface
 
@@ -72,19 +72,19 @@ UI's *Configuration* panel (which writes them back to `config.ini`); the rest ar
 
 | Section | Key | Values / format | Web |
 |---|---|---|:---:|
-| `[MODE]` | `benchmark_mode` | `true` (video file) / `false` (camera) | ☑ |
-| `[INFERENCE]` | `inference_device` | `NPU` / `CPU` / `CPU-50%` / `GPU-OpenCV-OpenCL` / `GPU-MNN` | ☑ |
-| | `max_inference_instances` | `1`–`3` (parallel streams/cameras) | ☑ |
-| | `npu_core_assignment` | `auto` (all on Core 0) / `distributed` (one core per instance) | ☑ |
-| | `debug_mode` | `true` / `false` (verbose logging) | ☑ |
-| | `rockchip_target` | NPU platform, e.g. `rk3588` | — |
+| `[MODE]` | `benchmark_mode` | `true` (video file) / `false` (camera) | ✅ |
+| `[INFERENCE]` | `inference_device` | `RKNPU-Auto` / `RKNPU-Distributed` / `CPU` / `CPU-50%` / `GPU-OpenCV-OpenCL` / `GPU-MNN` / `NPU-Hailo8` | ✅ |
+| | `max_inference_instances` | `1`–`3` parallel streams/cameras (RKNPU-Distributed pins stream N → RKNN core N) | ✅ |
+| | `debug_mode` | `true` / `false` (verbose logging) | ✅ |
+| | `rockchip_target` | RKNPU platform, e.g. `rk3588` | — |
 | | `obj_threshold`, `nms_threshold` | `0.0`–`1.0` | — |
 | | `max_detections_per_frame` | int; `0` disables the corrupt-frame guard | — |
 | | `cpu50_threads`, `cpu50_affinity` | int · CSV core ids — **CPU-50%** mode | — |
 | | `mnn_precision`, `mnn_backend` | `low`/`high`/`normal` · `OPENCL`/`CPU` — **GPU-MNN** mode | — |
-| `[PATHS]` | `model_rknn` | `.rknn` path — used by **NPU** | ☑ |
-| | `model_onnx` | `.onnx` path — used by **CPU / CPU-50% / GPU-OpenCV-OpenCL** | ☑ |
-| | `model_mnn` | `.mnn` path — used by **GPU-MNN** | — |
+| `[PATHS]` | `model_rknn` | `.rknn` path — used by **RKNPU** | ✅ |
+| | `model_onnx` | `.onnx` path — used by **CPU / CPU-50% / GPU-OpenCV-OpenCL** | ✅ |
+| | `model_mnn` | `.mnn` path — used by **GPU-MNN** | ✅ |
+| | `model_hailo8` | `.hef` path — used by **NPU-Hailo8** | ✅ |
 | | `model_labels` | class-names file path | — |
 | | `benchmark_video_0..N` | benchmark video path, one per stream | — |
 | `[WEB]` | `enabled`, `host`, `port` | `true`/`false` · bind IP · port | — |
@@ -93,7 +93,7 @@ UI's *Configuration* panel (which writes them back to `config.ini`); the rest ar
 | `[DETECTION]` | box/label style | `box_color`, `label_text_color`, `label_background_color`, `box_thickness`, `label_text_size`, `label_text_thickness` | — |
 | `[CLASSES]` | `default_labels` | comma-separated class names (fallback if no labels file) | — |
 
-> **Web UI** (*Configuration* panel → **Save**) edits only the ☑ rows; everything else is set in
+> **Web UI** (*Configuration* panel → **Save**) edits only the ✅ rows; everything else is set in
 > `config.ini` directly. Colors accept `B,G,R` or `#RRGGBB`. Comments must be on their own line
 > (`;` prefix — not after a value), and a literal `%` is allowed (e.g. `CPU-50%`).
 
@@ -113,9 +113,10 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 ```
 
 ### Inference Devices
-- **NPU Mode**: `device = NPU` - Uses RKNN Lite API with the RK3588 Neural Processing Unit
+- **RKNPU Mode**: `inference_device = RKNPU-Auto` / `RKNPU-Distributed` - Uses RKNN Lite API on the RK3588 on-chip NPU (3 cores; *Distributed* pins one camera stream per core, *Auto* uses Core 0)
 - **GPU-OpenCV-OpenCL Mode**: `inference_device = GPU-OpenCV-OpenCL` - Runs the ONNX model on the Mali-G610 via OpenCV-DNN + OpenCL (numerically correct but slow; see [GPU-OpenCV-OpenCL Inference](#gpu-opencv-opencl-inference-mali-g610) below)
 - **GPU-MNN Mode**: `inference_device = GPU-MNN` - Runs a dedicated `.mnn` model on the Mali-G610 via MNN + OpenCL (fp16) - the fast, numerically-correct GPU path (see [GPU-MNN Inference](#gpu-mnn-inference-mali-g610) below)
+- **NPU-Hailo8 Mode**: `inference_device = NPU-Hailo8` - Runs a dedicated `.hef` model on the external **Hailo-8** (26 TOPS) M.2/PCIe accelerator via HailoRT (see [NPU-Hailo8 Inference](#npu-hailo8-inference-hailo-8) below)
 - **CPU Mode**: `device = CPU` - Uses ONNX Runtime with the CPU backend
 
 ### Processing Modes
@@ -227,12 +228,13 @@ print('Device:', d.name(), '| vendor:', d.vendorName(), '| OpenCL', d.OpenCLVers
 
 | Mode | Backend | Inference (ms/frame) | FPS | Saturated unit |
 |------|---------|----------------------|-----|----------------|
-| NPU               | RKNN (rknnlite) | ~33 | ~29 | NPU |
+| RKNPU             | RKNN (rknnlite) | ~33 | ~29 | RKNPU |
 | CPU               | ONNX Runtime (all 8 cores) | ~127 | ~7.6 | CPU 100% |
 | CPU-50%           | ONNX Runtime (4 A76 threads) | ~340 | ~3 | CPU ~48% (A55 cores idle) |
 | GPU-OpenCV-OpenCL | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
 | GPU-MNN (fp16)    | MNN / OpenCL (Mali) | ~140 | ~7 | GPU |
 | GPU-MNN (fp32)    | MNN / OpenCL (Mali) | ~260 | ~4 | GPU |
+| NPU-Hailo8        | HailoRT (Hailo-8, 26 TOPS) | _pending_ | _pending_ | Hailo-8 |
 
 All modes produce correct, matching detections. GPU-OpenCV-OpenCL is slowest; **GPU-MNN is the fast,
 correct GPU path** (~18× faster than OpenCV-OpenCL, ~CPU-parity in speed while offloading the CPU —
@@ -318,6 +320,72 @@ sudo ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/libOpenCL.so
 
 ---
 
+## NPU-Hailo8 Inference (Hailo-8)
+
+> **Mode name:** `inference_device = NPU-Hailo8`. Runs a dedicated `.hef` model on the external
+> **Hailo-8** (26 TOPS) accelerator on the M.2/PCIe slot, via **HailoRT** — a separate dedicated NPU,
+> independent of the RK3588's on-chip RKNPU.
+
+It uses the **same Rockchip 9-head ONNX** as the other modes, compiled to a `.hef` **without on-chip
+NMS (raw FPN)**, so the existing `post_process()` decodes it unchanged. Model: `PATHS.model_hailo8`
+(point it at your `<model>.hef`, e.g. `assets/models/<model>.hef`). Input is fed as **NHWC uint8**
+(normalization baked into the HEF); outputs are transposed to NCHW and re-grouped to the per-scale
+`[box, cls, sum]` layout.
+
+**Multi-stream:** the Hailo-8 is a *single* accelerator (not 3 cores like the RKNPU). Up to 3 camera
+streams share one VDevice via HailoRT's round-robin scheduler (time-shared), so there is **no
+Auto/Distributed split** for this mode.
+
+### Model conversion (ONNX → HEF)
+The `.hef` is produced **off-device** with the Hailo **Dataflow Compiler** (DFC) from the same
+Rockchip 9-head ONNX as the other modes — keep the 9 output heads, no on-chip NMS. The pipeline is
+**parse** (ONNX → `.har`) → **optimize** (INT8 calibration with ~100–300 representative images) →
+**compile** (`performance_param(compiler_optimization_level=max)`) → `.hef`; then place your
+`<model>.hef` in `assets/models/` and point `PATHS.model_hailo8` at it.
+
+**Recommended:** run the DFC inside Hailo's **AI Software Suite Docker** on an x86_64 machine (Linux,
+or Windows via Docker Desktop, ≥16 GB RAM). That image bundles **`hailo_dataflow_compiler-3.34.0`**,
+which version-matches HailoRT 4.24.0 for Hailo-8. See the *Conversion to Hailo HEF* section of the
+conversion notebook for the full steps.
+
+> ⚠️ **A free, time-limited Google Colab session cannot finish the conversion.** Parse/optimize run,
+> but the final compile times out — YOLO11's C2PSA attention block forces a multi-context split whose
+> per-context allocator watchdog (~1h) Colab's 2-core CPU can't beat ("Resolver didn't find possible
+> solution / Watchdog expired"), or the session disconnects first (true even for a YOLO11n nano). Use
+> Colab only to validate the pipeline; build the real `.hef` in the Docker image on a multi-core x86
+> machine. (`3.33.1` from the Developer Zone → **Archive** also works; source page:
+> <https://hailo.ai/developer-zone/software-downloads/?product=ai_accelerators&device=hailo_8_8l>.)
+
+> ⚠️ **Match the DFC to the runtime.** For **Hailo-8 + HailoRT 4.24.0** (this device) use **DFC 3.34.0 or
+> 3.33.1** — both pin `tensorflow==2.18.0` so they install on Colab's Python 3.12, and both emit a HEF
+> that HailoRT 4.24.0 can load. The *main* download page's **DFC 5.3.0 targets Hailo-10H**; its HEF will
+> **not load** on HailoRT 4.24.0, so use 5.3.0 only to dry-run the pipeline. The notebook's setup cell
+> auto-prefers a 3.x wheel.
+>
+> _Colab note:_ a 3.x DFC pins `pyparsing==2.4.7`, but it imports TensorFlow whose `httplib2` needs
+> `pyparsing>=3.1`; the notebook upgrades it (otherwise `hailo parser` crashes with `AttributeError:
+> ... 'set_name'`).
+
+### Runtime install (one-time, on the device)
+The Hailo-8 needs the HailoRT stack (PCIe driver + runtime + pyhailort), matching the **HailoRT 4.24.0**
+used here (account-gated downloads from the Hailo Developer Zone):
+
+```bash
+sudo apt install -y dkms linux-headers-$(uname -r)
+sudo dpkg -i hailort-pcie-driver_4.24.0_all.deb     # DKMS builds the kernel module
+sudo modprobe hailo_pci                              # creates /dev/hailo0 (no reboot needed)
+sudo dpkg -i hailort_4.24.0_arm64.deb                # hailortcli + libhailort
+venv/bin/pip install hailort-4.24.0-cp312-cp312-linux_aarch64.whl
+hailortcli fw-control identify                       # verify the Hailo-8 is detected
+```
+
+### System Monitor
+The web System Monitor includes a **Hailo-8** card: utilization (a busy-fraction % — inference time ÷
+wall-time, since HailoRT 4.24 exposes no direct utilization counter) and chip temperature. Values
+populate while NPU-Hailo8 inference is running.
+
+---
+
 ## Troubleshooting
 
 - **No cameras**: Check `ls /dev/video*`
@@ -352,6 +420,7 @@ This project is licensed under the MIT License.
 - OpenCV (https://opencv.org/)
 - ONNX Runtime (https://github.com/microsoft/onnxruntime)
 - MNN (https://github.com/alibaba/MNN)
+- HailoRT (https://github.com/hailo-ai/hailort)
 - Flask-SocketIO (https://github.com/miguelgrinberg/Flask-SocketIO)
 - rknputop (https://github.com/ramonbroox/rknputop)
 - myrktop (https://github.com/mhl221135/myrktop)
