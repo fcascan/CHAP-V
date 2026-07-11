@@ -6,7 +6,7 @@ A project for comparison between CPU, GPU, RKNPU & Hailo-8 inference with **Web 
 ## Features
 
 - **Web Interface**: Modern web UI with real-time video streaming and console output
-- **Multi-camera support**: Up to 3 USB cameras with RKNPU core assignment
+- **Multi-camera support**: Up to 3 USB cameras, auto-numbered deterministically by USB port (each stream labelled by model + port); RKNPU core assignment
 - **Auto-installation**: Intelligent dependency detection and installation
 - **RKNPU & Hailo-8 acceleration**: RKNN toolkit / HailoRT with CPU fallback
 - **Real-time inference**: Live object detection with statistics
@@ -388,7 +388,7 @@ populate while NPU-Hailo8 inference is running.
 
 ## Troubleshooting
 
-- **No cameras**: Check `ls /dev/video*`
+- **No cameras / a camera missing**: Run `v4l2-ctl --list-devices`. Each USB webcam exposes several `/dev/video*` nodes but only the capture-capable one is used; cameras are enumerated by capability and numbered by USB port (so 3 cams are not necessarily nodes 0/1/2)
 - **Permission denied**: Use `sudo` to run this program
 - **Web interface not accessible**: Check firewall settings and use correct IP
 - **Video stream not loading**: Ensure processing is started and frames are available
