@@ -61,6 +61,7 @@
 import os
 import ctypes
 import logging
+import threading
 
 import numpy as np
 
@@ -76,6 +77,15 @@ except Exception as _e:  # pragma: no cover - import guard
 # (the expensive first-run tuning is paid only once).
 _SESSION_CACHE = {}
 _OPENCL_LOADER_CHECKED = False
+
+# Serializes inference on the single cached MNN session.  The web layer shares one
+# cached (Interpreter, Session) — keyed by (model, backend, precision) — across all
+# stream/camera worker threads, and the session plus the shared input tensor are
+# stateful: concurrent copyFrom()/runSession()/copyToHostTensor() on one OpenCL
+# session are not thread-safe on this Mali stack. One GPU + one shared OpenCL
+# context means time-sharing under a lock is correct (mirrors hailo_executor's
+# _VDEVICE_LOCK; and the OpenCV GPU path's _INFER_LOCK).
+_INFER_LOCK = threading.Lock()
 
 
 def _ensure_opencl_loadable():
@@ -206,24 +216,30 @@ class MNN_model_container:
         shape = self._input.getShape()
         tmp = MNN.Tensor(shape, MNN.Halide_Type_Float, data,
                          MNN.Tensor_DimensionType_Caffe)   # Caffe = NCHW
-        self._input.copyFrom(tmp)
-        self.interp.runSession(self.session)
+        # copyFrom -> runSession -> output read all mutate/read the shared session,
+        # shared input tensor and output tensors, so they run as one critical
+        # section: the session is shared across all worker threads and is not
+        # thread-safe (see _INFER_LOCK). The regroup below is on local arrays and
+        # stays outside the lock.
+        with _INFER_LOCK:
+            self._input.copyFrom(tmp)
+            self.interp.runSession(self.session)
 
-        # Read each output via copyToHostTensor into an NCHW (Caffe) host tensor.
-        # Do NOT use getNumpyData() directly on the OpenCL output tensors: those
-        # live in MNN's packed GPU layout, and reading them raw across a sequence
-        # of distinct inputs corrupts the session (first ~2 frames are correct,
-        # then every output goes NaN). copyToHostTensor does the proper GPU->host
-        # NCHW sync and is stable frame after frame.
-        outputs = self.interp.getSessionOutputAll(self.session)
-        outs = []
-        for t in outputs.values():
-            shape = t.getShape()
-            host = MNN.Tensor(shape, t.getDataType(),
-                              np.zeros(shape, dtype=np.float32),
-                              MNN.Tensor_DimensionType_Caffe)
-            t.copyToHostTensor(host)
-            outs.append(np.array(host.getNumpyData(), dtype=np.float32, copy=True))
+            # Read each output via copyToHostTensor into an NCHW (Caffe) host tensor.
+            # Do NOT use getNumpyData() directly on the OpenCL output tensors: those
+            # live in MNN's packed GPU layout, and reading them raw across a sequence
+            # of distinct inputs corrupts the session (first ~2 frames are correct,
+            # then every output goes NaN). copyToHostTensor does the proper GPU->host
+            # NCHW sync and is stable frame after frame.
+            outputs = self.interp.getSessionOutputAll(self.session)
+            outs = []
+            for t in outputs.values():
+                shape = t.getShape()
+                host = MNN.Tensor(shape, t.getDataType(),
+                                  np.zeros(shape, dtype=np.float32),
+                                  MNN.Tensor_DimensionType_Caffe)
+                t.copyToHostTensor(host)
+                outs.append(np.array(host.getNumpyData(), dtype=np.float32, copy=True))
 
         return _regroup_rockchip_outputs(outs)
 

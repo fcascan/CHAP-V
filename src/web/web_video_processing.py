@@ -188,13 +188,25 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     video_manager.set_camera_count(len(caps))
 
     yolo_engines = []
+    # RKNPU and GPU modes need one engine per stream: RKNPU to pin each stream to its
+    # own NPU core; GPU because the worker threads otherwise share one engine's
+    # letterbox helper/frame-label state (corrupts boxes with mixed-resolution
+    # sources). For OpenCV/MNN the per-stream engines still reuse the one
+    # process-cached Net/session, which the executor's _INFER_LOCK serializes.
+    # CPU/CPU-50% (onnxruntime) are thread-safe, so they keep sharing one engine.
+    per_stream_engines = (INFERENCE_DEVICE.startswith("RKNPU")
+                          or INFERENCE_DEVICE.startswith("GPU")) and len(caps) > 1
     try:
-        if INFERENCE_DEVICE.startswith("RKNPU") and len(caps) > 1:
+        if per_stream_engines:
             for idx in range(len(caps)):
-                core_id = idx if NPU_CORE_ASSIGNMENT == "distributed" else 0
+                core_id = (idx if NPU_CORE_ASSIGNMENT == "distributed" else 0) \
+                    if INFERENCE_DEVICE.startswith("RKNPU") else None
                 engine = create_yolo11_engine(INFERENCE_DEVICE, npu_core_id=core_id)
                 yolo_engines.append(engine)
-                logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (RKNPU Core {core_id})")
+                if core_id is not None:
+                    logger.info(f"YOLO11 engine {idx} initialized for stream {idx} (RKNPU Core {core_id})")
+                else:
+                    logger.info(f"YOLO11 engine {idx} initialized for stream {idx} ({INFERENCE_DEVICE})")
                 if DEBUG_MODE:
                     logging.debug(f"[DEBUG] Stream {idx} engine platform: {engine.platform}")
         else:

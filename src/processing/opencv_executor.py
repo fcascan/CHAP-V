@@ -46,6 +46,7 @@
 import os
 import sys
 import atexit
+import threading
 
 import numpy as np
 import cv2
@@ -68,6 +69,15 @@ except Exception:
 # process lifetime so it is never destroyed (see module header / release()).
 _NET_CACHE = {}
 _EXIT_GUARD_INSTALLED = False
+
+# Serializes inference on the single cached Net.  The web layer shares one cached
+# cv2.dnn.Net (per model_path) across all stream/camera worker threads, and
+# cv2.dnn.Net.setInput()/forward() are stateful and NOT thread-safe: concurrent
+# calls on one OpenCL Net segfault on this Mali stack (surfaces at >1 instance).
+# The Mali is a single GPU with one shared OpenCL context, so time-sharing it
+# under a lock is correct (multi-instance is serialized, not parallel — same as
+# the single Hailo accelerator's _VDEVICE_LOCK in hailo_executor.py).
+_INFER_LOCK = threading.Lock()
 
 
 def _install_opencl_exit_guard():
@@ -135,8 +145,13 @@ class OpenCV_OpenCL_model_container:
 
     def run(self, input_datas):
         inp = np.ascontiguousarray(np.asarray(input_datas[0], dtype=np.float32))
-        self.net.setInput(inp)
-        outs = [np.asarray(o, dtype=np.float32) for o in self.net.forward(self._out_names)]
+        # setInput + forward mutate the shared cached Net, so they must run as one
+        # critical section: the Net is shared across all worker threads and is not
+        # thread-safe (see _INFER_LOCK). The output regroup below is on local
+        # arrays and stays outside the lock.
+        with _INFER_LOCK:
+            self.net.setInput(inp)
+            outs = [np.asarray(o, dtype=np.float32) for o in self.net.forward(self._out_names)]
 
         # Rockchip 9-output head: OpenCV returns the 9 blobs grouped as
         # [box*3, sum*3, cls*3]; post_process() wants per FPN scale [box, cls, sum].
