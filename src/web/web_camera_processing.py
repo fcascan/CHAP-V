@@ -44,8 +44,29 @@ def _read_system_stats():
     return cpu_pct, npu_loads, gpu_pct
 
 
+def _short_port(id_path):
+    """Compact, stable identifier for a USB port derived from a udev ID_PATH.
+
+    'platform-xhci-hcd.11.auto-usb-0:1:1.0' -> 'xhci-hcd.11-usb-0:1:1.0'.
+    Returns 'unknown' when the path is empty.
+    """
+    if not id_path:
+        return "unknown"
+    port = id_path
+    if port.startswith("platform-"):
+        port = port[len("platform-"):]
+    return port.replace(".auto", "")
+
+
+def _camera_label(info):
+    """Human-readable camera identity: model plus its physical USB port."""
+    model = info.get('model') or 'Camera'
+    port = info.get('port') or _short_port(info.get('path', ''))
+    return f"{model} ({port})"
+
+
 def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger,
-                   results_dir=None, run_timestamp=None, npu_core_id=None):
+                   results_dir=None, run_timestamp=None, npu_core_id=None, camera_label=None):
     """Process one camera stream until stopped or camera fails critically."""
     display_timestamps = []
     inftime_buf = []
@@ -127,7 +148,7 @@ def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output
         save_instance_performance_data(
             csv_rows, results_dir, INFERENCE_DEVICE, run_timestamp, f"cam{idx}", logger,
             npu_core_id=npu_core_id, model_name=model_name,
-            camera_index=idx,
+            camera_index=idx, camera_identity=camera_label,
         )
 
 
@@ -142,21 +163,43 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     logger = get_web_logger()
 
     context = pyudev.Context()
-    video_devices = []
+    discovered = []
     for device in context.list_devices(subsystem='video4linux'):
         devnode = device.device_node
-        if devnode and devnode.startswith('/dev/video'):
-            try:
-                video_devices.append(int(devnode.replace('/dev/video', '')))
-            except ValueError:
-                continue
+        if not (devnode and devnode.startswith('/dev/video')):
+            continue
+        # UVC webcams expose several /dev/video nodes: the true capture node
+        # (ID_V4L_CAPABILITIES contains 'capture') plus metadata / non-capture
+        # nodes. Keep only capture-capable nodes so metadata nodes don't consume
+        # MAX_INFERENCE_INSTANCES slots and hide a real camera.
+        capabilities = device.properties.get('ID_V4L_CAPABILITIES', '')
+        if 'capture' not in capabilities:
+            continue
+        try:
+            node = int(devnode.replace('/dev/video', ''))
+        except ValueError:
+            continue
+        discovered.append({
+            'node': node,
+            'path': device.properties.get('ID_PATH', ''),
+            'model': (device.properties.get('ID_MODEL', '')
+                      or device.properties.get('ID_V4L_PRODUCT', '')
+                      or 'Camera').replace('_', ' '),
+            'serial': (device.properties.get('ID_SERIAL_SHORT', '')
+                       or device.properties.get('ID_SERIAL', '')),
+        })
 
-    video_devices = sorted(set(video_devices))[:MAX_INFERENCE_INSTANCES]
+    # Order by physical USB port (ID_PATH) so each camera number is stable and
+    # reproducible per port across reboots/replugs, instead of following the
+    # non-deterministic udev enumeration order of the /dev/video* nodes.
+    discovered.sort(key=lambda d: (d['path'], d['node']))
+    discovered = discovered[:MAX_INFERENCE_INSTANCES]
+
     cameras = []
-    for i in video_devices:
-        cap = cv2.VideoCapture(i)
+    for info in discovered:
+        cap = cv2.VideoCapture(info['node'])
         if cap.isOpened():
-            cameras.append(cap)
+            cameras.append({'cap': cap, 'info': info})
         else:
             cap.release()
 
@@ -164,8 +207,18 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
         logger.error("No cameras detected, at least one camera is required.")
         return
 
+    # Assign the stable, contiguous camera number (0..N-1) and a human-readable
+    # identity used in logs, the web UI and the performance report.
+    for number, entry in enumerate(cameras):
+        info = entry['info']
+        info['number'] = number
+        info['port'] = _short_port(info['path'])
+        info['label'] = _camera_label(info)
+        logger.info(f"Camera {number}: /dev/video{info['node']} -> "
+                    f"{info['label']} [serial={info['serial'] or 'n/a'}]")
+
     logger.info(f"Cameras detected: {len(cameras)}")
-    video_manager.set_camera_count(len(cameras))
+    video_manager.set_cameras([entry['info'] for entry in cameras])
 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, "images")
@@ -195,8 +248,8 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
 
     except Exception as e:
         logger.error(f"Failed to initialize YOLO11 engines: {e}")
-        for cap in cameras:
-            cap.release()
+        for entry in cameras:
+            entry['cap'].release()
         return
 
     video_manager.start()
@@ -207,13 +260,15 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     processing_active = lambda: (not stop_event.is_set()) if web_server is None else web_server.processing_active
 
     threads = []
-    for idx, cap in enumerate(cameras):
+    for idx, entry in enumerate(cameras):
+        cap = entry['cap']
         engine = yolo_engines[idx if len(yolo_engines) > 1 else 0]
         core_id = idx if (INFERENCE_DEVICE.startswith("RKNPU") and NPU_CORE_ASSIGNMENT == "distributed" and len(cameras) > 1) else (0 if INFERENCE_DEVICE.startswith("RKNPU") else None)
         t = threading.Thread(
             target=_camera_worker,
             args=(idx, cap, engine, video_manager, processing_active, OUTPUT_DIR, logger),
-            kwargs={'results_dir': RESULTS_DIR, 'run_timestamp': run_timestamp, 'npu_core_id': core_id},
+            kwargs={'results_dir': RESULTS_DIR, 'run_timestamp': run_timestamp,
+                    'npu_core_id': core_id, 'camera_label': entry['info']['label']},
             daemon=True,
             name=f"camera-{idx}",
         )
@@ -250,7 +305,7 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
         except Exception as e:
             logger.warning(f"Error releasing YOLO11 engine: {e}")
 
-    for cap in cameras:
-        cap.release()
+    for entry in cameras:
+        entry['cap'].release()
 
     logger.info("Camera Analysis Complete")

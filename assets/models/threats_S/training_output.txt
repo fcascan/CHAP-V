@@ -1,0 +1,527 @@
+/content/ultralytics
+✅ Checkpoint backup enabled (every 1 epochs + on new best) → /content/drive/MyDrive/YOLO_checkpoints
+Ultralytics 8.4.87 🚀 Python-3.12.13 torch-2.11.0+cu128 CUDA:0 (Tesla T4, 14913MiB)
+engine/trainer: agnostic_nms=False, amp=True, angle=1.0, augment=False, auto_augment=randaugment, batch=-1, bgr=0.0, box=7.5, cache=True, cfg=None, classes=None, close_mosaic=10, cls=0.5, cls_pw=0.0, compile=False, conf=None, copy_paste=0.0, copy_paste_mode=flip, cos_lr=False, cutmix=0.0, data=/threat-detection-project-1/data.yaml, degrees=0.0, deterministic=True, device=0, dfl=1.5, dis=6.0, distill_model=None, dnn=False, dropout=0.0, dynamic=False, embed=None, end2end=None, epochs=120, erasing=0.4, exist_ok=False, fliplr=0.5, flipud=0.0, format=torchscript, fraction=1.0, freeze=None, hsv_h=0.015, hsv_s=0.7, hsv_v=0.4, imgsz=640, iou=0.7, keras=False, kobj=1.0, line_width=None, lr0=0.01, lrf=0.01, mask_ratio=4, max_det=300, mixup=0.0, mode=train, model=yolo11s.pt, momentum=0.937, mosaic=1.0, multi_scale=0.0, name=threat-detection-project-yolo11s_training-2, nbs=64, nms=False, opset=None, optimize=False, optimizer=auto, overlap_mask=True, patience=20, perspective=0.0, plots=True, pose=12.0, pretrained=True, profile=False, project=threat-detection-project_yolo11s, quantize=None, rect=False, resume=False, retina_masks=False, rle=1.0, save=True, save_conf=False, save_crop=False, save_dir=/content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2, save_frames=False, save_json=False, save_period=-1, save_txt=False, scale=0.5, seed=0, shear=0.0, show=False, show_boxes=True, show_conf=True, show_labels=True, simplify=True, single_cls=False, source=None, split=val, stream_buffer=False, task=detect, time=None, tracker=tracktrack.yaml, translate=0.1, val=True, verbose=True, vid_stride=1, visualize=False, warmup_bias_lr=0.1, warmup_epochs=3.0, warmup_momentum=0.8, weight_decay=0.0005, workers=8, workspace=None
+Overriding model.yaml nc=80 with nc=3
+
+                   from  n    params  module                                       arguments                     
+  0                  -1  1       928  ultralytics.nn.modules.conv.Conv             [3, 32, 3, 2]                 
+  1                  -1  1     18560  ultralytics.nn.modules.conv.Conv             [32, 64, 3, 2]                
+  2                  -1  1     26080  ultralytics.nn.modules.block.C3k2            [64, 128, 1, False, 0.25]     
+  3                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+  4                  -1  1    103360  ultralytics.nn.modules.block.C3k2            [128, 256, 1, False, 0.25]    
+  5                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+  6                  -1  1    346112  ultralytics.nn.modules.block.C3k2            [256, 256, 1, True]           
+  7                  -1  1   1180672  ultralytics.nn.modules.conv.Conv             [256, 512, 3, 2]              
+  8                  -1  1   1380352  ultralytics.nn.modules.block.C3k2            [512, 512, 1, True]           
+  9                  -1  1    656896  ultralytics.nn.modules.block.SPPF            [512, 512, 5]                 
+ 10                  -1  1    990976  ultralytics.nn.modules.block.C2PSA           [512, 512, 1]                 
+ 11                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 12             [-1, 6]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 13                  -1  1    443776  ultralytics.nn.modules.block.C3k2            [768, 256, 1, False]          
+ 14                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 15             [-1, 4]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 16                  -1  1    127680  ultralytics.nn.modules.block.C3k2            [512, 128, 1, False]          
+ 17                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+ 18            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 19                  -1  1    345472  ultralytics.nn.modules.block.C3k2            [384, 256, 1, False]          
+ 20                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+ 21            [-1, 10]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 22                  -1  1   1511424  ultralytics.nn.modules.block.C3k2            [768, 512, 1, True]           
+ 23        [16, 19, 22]  1    820569  ultralytics.nn.modules.head.Detect           [3, 16, None, [128, 256, 512]]
+YOLO11s summary: 182 layers, 9,428,953 parameters, 9,428,937 gradients, 21.6 GFLOPs
+
+Transferred 493/499 items from pretrained weights
+Freezing layer 'model.23.dfl.conv.weight'
+AMP: running Automatic Mixed Precision (AMP) checks...
+Downloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt to 'yolo26n.pt': 100% ━━━━━━━━━━━━ 5.3MB 107.3MB/s 0.0s
+AMP: checks passed ✅
+train: Fast image access ✅ (ping: 0.0±0.0 ms, read: 1352.9±864.6 MB/s, size: 33.8 KB)
+train: Scanning /threat-detection-project-1/train/labels... 21840 images, 2 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 21840/21840 2.1Kit/s 10.5s
+train: New cache created: /threat-detection-project-1/train/labels.cache
+albumentations: Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+AutoBatch: Computing optimal batch size for imgsz=640 at 60.0% CUDA memory utilization.
+AutoBatch: CUDA:0 (Tesla T4) 14.56G total, 0.14G reserved, 0.11G allocated, 14.32G free
+      Params      GFLOPs  GPU_mem (GB)  forward (ms) backward (ms)                   input                  output
+     9428953       21.55         0.856         62.54           nan        (1, 3, 640, 640)                    list
+     9428953       43.11         1.841         47.64           nan        (2, 3, 640, 640)                    list
+     9428953       86.21         3.165         33.44           nan        (4, 3, 640, 640)                    list
+     9428953       172.4         5.713         57.82           nan        (8, 3, 640, 640)                    list
+     9428953       344.8        10.563         109.8           nan       (16, 3, 640, 640)                    list
+AutoBatch: Using batch-size 13 for CUDA:0 9.00G/14.56G (62%) ✅
+train: Fast image access ✅ (ping: 0.0±0.0 ms, read: 1621.8±708.4 MB/s, size: 33.6 KB)
+train: Scanning /threat-detection-project-1/train/labels.cache... 21840 images, 2 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 21840/21840 3.4Git/s 0.0s
+WARNING ⚠️ train: 37.5GB RAM required to cache images with 50% safety margin but only 9.6/12.7GB available, not caching images
+albumentations: Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+val: Fast image access ✅ (ping: 0.0±0.0 ms, read: 312.6±52.5 MB/s, size: 41.5 KB)
+val: Scanning /threat-detection-project-1/valid/labels.cache... 307 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 307/307 13.6Mit/s 0.0s
+WARNING ⚠️ cache='ram' may produce non-deterministic training results. Consider cache='disk' as a deterministic alternative if your disk space allows.
+val: Caching images (0.4GB RAM): 100% ━━━━━━━━━━━━ 307/307 91.2it/s 3.4s
+optimizer: 'optimizer=auto' found, ignoring 'lr0=0.01' and 'momentum=0.937' and determining best 'optimizer', 'lr0' and 'momentum' automatically... 
+optimizer: MuSGD(lr=0.01, momentum=0.9) with parameter groups 81 weight(decay=0.0), 88 weight(decay=0.0005078125), 87 bias(decay=0.0)
+Plotting labels to /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2/labels.jpg... 
+Image sizes 640 train, 640 val
+Using 2 dataloader workers
+Logging results to /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2
+Starting training for 120 epochs...
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1/120      3.53G      1.332      1.619      1.558         31        640: 100% ━━━━━━━━━━━━ 1680/1680 2.4it/s 11:52
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 1.2it/s 9.7s
+                   all        307        339       0.49      0.424      0.457      0.175
+  [Backup] Epoch 1: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch1.pt
+  [Backup] Epoch 1: new best (fitness=0.1752) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      2/120       4.5G      1.361      1.512      1.587         25        640: 100% ━━━━━━━━━━━━ 1680/1680 2.9it/s 9:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.4it/s 2.7s
+                   all        307        339      0.419      0.333      0.318      0.144
+  [Backup] Epoch 2: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch2.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      3/120       4.5G      1.456      1.711      1.687         35        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 9:10
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.6it/s 2.6s
+                   all        307        339      0.281      0.343      0.255      0.103
+  [Backup] Epoch 3: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch3.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      4/120       4.5G       1.46      1.731      1.708         32        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:58
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.6it/s 2.6s
+                   all        307        339      0.488      0.401       0.41      0.177
+  [Backup] Epoch 4: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch4.pt
+  [Backup] Epoch 4: new best (fitness=0.1768) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      5/120       4.5G      1.376      1.535      1.626         20        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:60
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.631      0.512       0.56      0.258
+  [Backup] Epoch 5: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch5.pt
+  [Backup] Epoch 5: new best (fitness=0.2584) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      6/120       4.5G      1.309      1.404      1.573         22        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:56
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.574      0.544      0.552      0.266
+  [Backup] Epoch 6: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch6.pt
+  [Backup] Epoch 6: new best (fitness=0.2657) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      7/120       4.5G      1.266      1.312      1.528         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 9:02
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.684      0.498      0.593      0.288
+  [Backup] Epoch 7: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch7.pt
+  [Backup] Epoch 7: new best (fitness=0.2879) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      8/120       4.5G       1.23      1.247      1.497         31        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:60
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.3it/s 2.8s
+                   all        307        339      0.696      0.577      0.629      0.305
+  [Backup] Epoch 8: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch8.pt
+  [Backup] Epoch 8: new best (fitness=0.3051) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      9/120       4.5G      1.206      1.193      1.469         27        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 9:03
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.6it/s 2.6s
+                   all        307        339      0.693      0.605      0.679      0.347
+  [Backup] Epoch 9: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch9.pt
+  [Backup] Epoch 9: new best (fitness=0.3469) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     10/120       4.5G      1.189      1.153      1.461         31        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 9:01
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.2it/s 2.8s
+                   all        307        339      0.746      0.617      0.714      0.373
+  [Backup] Epoch 10: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch10.pt
+  [Backup] Epoch 10: new best (fitness=0.3725) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     11/120       4.5G      1.166      1.118       1.44         18        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.8it/s 3.2s
+                   all        307        339       0.82      0.591      0.711      0.378
+  [Backup] Epoch 11: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch11.pt
+  [Backup] Epoch 11: new best (fitness=0.3784) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     12/120       4.5G      1.152      1.075      1.423         37        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.7it/s 3.2s
+                   all        307        339      0.769      0.647      0.716      0.395
+  [Backup] Epoch 12: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch12.pt
+  [Backup] Epoch 12: new best (fitness=0.3950) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     13/120       4.5G      1.142      1.052      1.414         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.2it/s 2.8s
+                   all        307        339      0.775      0.632      0.721      0.386
+  [Backup] Epoch 13: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch13.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     14/120       4.5G      1.117      1.016      1.396         22        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339       0.71        0.7      0.738        0.4
+  [Backup] Epoch 14: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch14.pt
+  [Backup] Epoch 14: new best (fitness=0.4004) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     15/120       4.5G      1.112      1.001      1.389         19        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.2it/s 2.9s
+                   all        307        339       0.76      0.679       0.74      0.425
+  [Backup] Epoch 15: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch15.pt
+  [Backup] Epoch 15: new best (fitness=0.4254) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     16/120       4.5G      1.112     0.9787      1.383         32        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.2it/s 2.9s
+                   all        307        339      0.854      0.659      0.766      0.429
+  [Backup] Epoch 16: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch16.pt
+  [Backup] Epoch 16: new best (fitness=0.4293) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     17/120       4.5G      1.094      0.957      1.372         30        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.808      0.728      0.796      0.449
+  [Backup] Epoch 17: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch17.pt
+  [Backup] Epoch 17: new best (fitness=0.4487) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     18/120       4.5G      1.083     0.9401      1.358         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339       0.82      0.738      0.792      0.446
+  [Backup] Epoch 18: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch18.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     19/120       4.5G      1.067      0.925      1.345         22        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.864      0.673      0.784      0.442
+  [Backup] Epoch 19: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch19.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     20/120       4.5G      1.065     0.9101      1.342         19        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:53
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339       0.83      0.726      0.792      0.446
+  [Backup] Epoch 20: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch20.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     21/120       4.5G       1.06     0.8961      1.341         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.0it/s 3.0s
+                   all        307        339       0.86      0.724      0.806      0.459
+  [Backup] Epoch 21: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch21.pt
+  [Backup] Epoch 21: new best (fitness=0.4592) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     22/120       4.5G      1.056     0.8882      1.332         25        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.837      0.748      0.819      0.469
+  [Backup] Epoch 22: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch22.pt
+  [Backup] Epoch 22: new best (fitness=0.4688) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     23/120       4.5G      1.039     0.8655       1.32         39        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.9it/s 3.0s
+                   all        307        339      0.852      0.734      0.806      0.467
+  [Backup] Epoch 23: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch23.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     24/120       4.5G      1.033     0.8507      1.315         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:53
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.8it/s 3.2s
+                   all        307        339      0.868      0.753      0.814      0.474
+  [Backup] Epoch 24: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch24.pt
+  [Backup] Epoch 24: new best (fitness=0.4738) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     25/120       4.5G      1.031     0.8419       1.31         25        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.0it/s 3.0s
+                   all        307        339      0.832      0.742      0.817      0.475
+  [Backup] Epoch 25: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch25.pt
+  [Backup] Epoch 25: new best (fitness=0.4748) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     26/120       4.5G      1.024     0.8363      1.303         31        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.8it/s 3.1s
+                   all        307        339      0.857      0.748      0.822      0.476
+  [Backup] Epoch 26: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch26.pt
+  [Backup] Epoch 26: new best (fitness=0.4755) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     27/120       4.5G      1.023     0.8327      1.305         35        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.9it/s 3.1s
+                   all        307        339      0.849       0.77      0.835      0.477
+  [Backup] Epoch 27: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch27.pt
+  [Backup] Epoch 27: new best (fitness=0.4770) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     28/120       4.5G      1.005     0.8125      1.287         23        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:42
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.883      0.733      0.831      0.486
+  [Backup] Epoch 28: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch28.pt
+  [Backup] Epoch 28: new best (fitness=0.4859) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     29/120       4.5G      1.004     0.8094      1.286         24        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:41
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.0it/s 3.0s
+                   all        307        339      0.864      0.779      0.842      0.483
+  [Backup] Epoch 29: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch29.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     30/120       4.5G     0.9974     0.7918      1.284         22        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.861      0.794      0.849      0.484
+  [Backup] Epoch 30: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch30.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     31/120       4.5G     0.9871     0.7887      1.275         31        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:41
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.2it/s 2.8s
+                   all        307        339      0.829      0.815       0.85      0.487
+  [Backup] Epoch 31: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch31.pt
+  [Backup] Epoch 31: new best (fitness=0.4867) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     32/120       4.5G      0.984     0.7751      1.273         35        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.5it/s 3.4s
+                   all        307        339      0.889      0.768      0.843      0.492
+  [Backup] Epoch 32: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch32.pt
+  [Backup] Epoch 32: new best (fitness=0.4917) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     33/120       4.5G     0.9807     0.7698      1.266         32        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.856      0.817      0.853      0.494
+  [Backup] Epoch 33: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch33.pt
+  [Backup] Epoch 33: new best (fitness=0.4936) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     34/120       4.5G     0.9758     0.7581      1.263         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.857      0.819      0.852      0.492
+  [Backup] Epoch 34: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch34.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     35/120       4.5G     0.9755      0.752      1.259         31        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.879        0.8      0.858      0.491
+  [Backup] Epoch 35: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch35.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     36/120       4.5G     0.9636     0.7406      1.254         19        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:45
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.4it/s 2.7s
+                   all        307        339      0.863      0.812      0.866      0.495
+  [Backup] Epoch 36: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch36.pt
+  [Backup] Epoch 36: new best (fitness=0.4947) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     37/120       4.5G     0.9666     0.7397      1.252         37        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:45
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.3it/s 2.8s
+                   all        307        339      0.854      0.829      0.863      0.504
+  [Backup] Epoch 37: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch37.pt
+  [Backup] Epoch 37: new best (fitness=0.5042) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     38/120       4.5G     0.9617     0.7372      1.247         30        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.873      0.818      0.865      0.508
+  [Backup] Epoch 38: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch38.pt
+  [Backup] Epoch 38: new best (fitness=0.5084) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     39/120       4.5G     0.9537     0.7239      1.242         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.5it/s 2.7s
+                   all        307        339      0.867       0.82      0.864      0.502
+  [Backup] Epoch 39: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch39.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     40/120       4.5G     0.9476     0.7217       1.24         39        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:59
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.861      0.824      0.863      0.498
+  [Backup] Epoch 40: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch40.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     41/120       4.5G     0.9462     0.7166      1.235         30        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:52
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.865      0.832      0.862      0.502
+  [Backup] Epoch 41: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch41.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     42/120       4.5G     0.9375      0.707      1.229         27        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.869      0.827      0.865      0.502
+  [Backup] Epoch 42: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch42.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     43/120       4.5G     0.9342     0.7026      1.227         18        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.861      0.831      0.866      0.504
+  [Backup] Epoch 43: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch43.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     44/120       4.5G      0.925     0.6955      1.221         39        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:50
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.1it/s 3.0s
+                   all        307        339      0.902      0.787      0.862      0.509
+  [Backup] Epoch 44: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch44.pt
+  [Backup] Epoch 44: new best (fitness=0.5088) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     45/120       4.5G     0.9224     0.6827      1.216         30        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:53
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.1it/s 2.9s
+                   all        307        339      0.914      0.786      0.862      0.508
+  [Backup] Epoch 45: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch45.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     46/120       4.5G      0.923     0.6868      1.215         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:48
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.1it/s 2.9s
+                   all        307        339      0.863      0.827      0.864      0.504
+  [Backup] Epoch 46: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch46.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     47/120       4.5G      0.921     0.6796      1.217         23        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.5it/s 2.7s
+                   all        307        339      0.857      0.832      0.864      0.503
+  [Backup] Epoch 47: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch47.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     48/120       4.5G     0.9116     0.6732       1.21         34        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:48
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.862       0.84      0.866      0.508
+  [Backup] Epoch 48: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch48.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     49/120       4.5G     0.9069     0.6622      1.207         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:54
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.842       0.84      0.865       0.51
+  [Backup] Epoch 49: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch49.pt
+  [Backup] Epoch 49: new best (fitness=0.5100) → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     50/120       4.5G        0.9     0.6571      1.203         32        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:44
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339      0.861      0.825      0.866      0.507
+  [Backup] Epoch 50: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch50.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     51/120       4.5G     0.9016     0.6544      1.201         27        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:43
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.864      0.819      0.865      0.505
+  [Backup] Epoch 51: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch51.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     52/120       4.5G     0.8952      0.644      1.197         29        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:52
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.5s
+                   all        307        339       0.87      0.822      0.865      0.504
+  [Backup] Epoch 52: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch52.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     53/120       4.5G     0.8964     0.6507      1.195         22        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:43
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.1it/s 3.0s
+                   all        307        339      0.869      0.825      0.867      0.504
+  [Backup] Epoch 53: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch53.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     54/120       4.5G     0.8907     0.6441      1.193         19        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.861      0.829      0.868      0.503
+  [Backup] Epoch 54: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch54.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     55/120       4.5G     0.8815     0.6358      1.183         21        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:54
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.878      0.826      0.868      0.502
+  [Backup] Epoch 55: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch55.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     56/120       4.5G      0.874     0.6338      1.182         33        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:53
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.879      0.824      0.869      0.504
+  [Backup] Epoch 56: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch56.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     57/120       4.5G     0.8745     0.6275      1.181         23        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.888       0.82       0.87      0.504
+  [Backup] Epoch 57: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch57.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     58/120       4.5G     0.8657      0.623      1.177         20        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.9it/s 3.1s
+                   all        307        339      0.892      0.819      0.868      0.503
+  [Backup] Epoch 58: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch58.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     59/120       4.5G     0.8699     0.6203      1.175         24        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:52
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.7it/s 3.2s
+                   all        307        339      0.884      0.814      0.863      0.501
+  [Backup] Epoch 59: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch59.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     60/120       4.5G     0.8615      0.616      1.173         33        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:48
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.887      0.816      0.866      0.502
+  [Backup] Epoch 60: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch60.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     61/120       4.5G     0.8598     0.6117       1.17         30        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:49
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.875      0.818      0.869      0.504
+  [Backup] Epoch 61: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch61.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     62/120       4.5G      0.853     0.6051      1.169         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:48
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.8it/s 3.2s
+                   all        307        339      0.875      0.821      0.868      0.504
+  [Backup] Epoch 62: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch62.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     63/120       4.5G     0.8466     0.5979      1.165         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.8it/s 2.5s
+                   all        307        339      0.874      0.825      0.871      0.506
+  [Backup] Epoch 63: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch63.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     64/120       4.5G     0.8447     0.5943       1.16         25        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:51
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.6it/s 2.6s
+                   all        307        339      0.866       0.84      0.871      0.506
+  [Backup] Epoch 64: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch64.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     65/120       4.5G     0.8428     0.5924      1.161         28        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:57
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.6it/s 2.6s
+                   all        307        339      0.875       0.84      0.872      0.507
+  [Backup] Epoch 65: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch65.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     66/120       4.5G     0.8409     0.5918      1.156         34        640: 100% ━━━━━━━━━━━━ 1680/1680 3.1it/s 8:58
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.868      0.836      0.866      0.505
+  [Backup] Epoch 66: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch66.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     67/120       4.5G     0.8352     0.5848      1.154         36        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:46
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 3.7it/s 3.2s
+                   all        307        339       0.87      0.837      0.866      0.504
+  [Backup] Epoch 67: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch67.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     68/120       4.5G     0.8333     0.5858      1.152         26        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:47
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339       0.87      0.836      0.866      0.506
+  [Backup] Epoch 68: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch68.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+     69/120       4.5G     0.8267     0.5783       1.15         34        640: 100% ━━━━━━━━━━━━ 1680/1680 3.2it/s 8:52
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 4.7it/s 2.6s
+                   all        307        339      0.872      0.836      0.866      0.508
+EarlyStopping: Training stopped early as no improvement observed in last 20 epochs. Best results observed at epoch 49, best model saved as best.pt.
+To update EarlyStopping(patience=20) pass a new patience value, i.e. `patience=300` or use `patience=0` to disable EarlyStopping.
+  [Backup] Epoch 69: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch69.pt
+
+69 epochs completed in 10.311 hours.
+Optimizer stripped from /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2/weights/last.pt, 19.2MB
+Optimizer stripped from /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2/weights/best.pt, 19.2MB
+
+Validating /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2/weights/best.pt...
+Ultralytics 8.4.87 🚀 Python-3.12.13 torch-2.11.0+cu128 CUDA:0 (Tesla T4, 14913MiB)
+YOLO11s summary (fused): 101 layers, 9,413,961 parameters, 0 gradients, 21.3 GFLOPs
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 12/12 2.2it/s 5.4s
+                   all        307        339      0.842       0.84      0.865      0.508
+                 knife        117        117      0.878      0.906      0.904      0.581
+                pistol        190        222      0.805      0.775      0.827      0.435
+Speed: 0.3ms preprocess, 5.1ms inference, 0.0ms loss, 4.3ms postprocess per image
+Results saved to /content/ultralytics/runs/detect/threat-detection-project_yolo11s/threat-detection-project-yolo11s_training-2
+  [Backup] Epoch 70: last.pt → /content/drive/MyDrive/YOLO_checkpoints/threat-detection-project-yolo11s_training_epoch70.pt
+✅ Training completed!

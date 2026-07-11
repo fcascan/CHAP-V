@@ -157,25 +157,24 @@ def load_config(is_reload=False):
         VIDEO_FILE_PATHS.append(os.path.join(BASE_DIR, _fallback))
     VIDEO_FILE_PATH = VIDEO_FILE_PATHS[0]
     
-    # Load classes with fallback order:
-    # 1) PATHS.model_labels from config.ini
-    # 2) project-root yolo11n.txt
-    # 3) CLASSES.default_labels from config.ini
-    model_labels_cfg = parser.get("PATHS", "model_labels", fallback="").strip()
+    # Labels: each model folder (assets/models/<name>/) carries its own classes.txt, so labels
+    # follow the selected model. If that file is absent, fall back to CLASSES.default_labels.
     MODEL_LABELS_FILE_PATH = None
     labels = []
 
-    if model_labels_cfg:
-        configured_labels_path = model_labels_cfg
-        if not os.path.isabs(configured_labels_path):
-            configured_labels_path = os.path.join(BASE_DIR, configured_labels_path)
-        if os.path.isfile(configured_labels_path):
-            MODEL_LABELS_FILE_PATH = configured_labels_path
-
-    if MODEL_LABELS_FILE_PATH is None:
-        yolo11n_fallback = os.path.join(BASE_DIR, "yolo11n.txt")
-        if os.path.isfile(yolo11n_fallback):
-            MODEL_LABELS_FILE_PATH = yolo11n_fallback
+    # Pick the model file for the ACTIVE inference device, then read its folder's classes.txt.
+    if INFERENCE_DEVICE.startswith("RKNPU"):
+        _active_model = MODEL_PATH
+    elif INFERENCE_DEVICE == "NPU-HAILO8":
+        _active_model = HAILO8_MODEL_PATH
+    elif INFERENCE_DEVICE == "GPU-MNN":
+        _active_model = MNN_MODEL_PATH
+    else:
+        _active_model = ONNX_MODEL_PATH
+    if _active_model:
+        _folder_classes = os.path.join(os.path.dirname(_active_model), "classes.txt")
+        if os.path.isfile(_folder_classes):
+            MODEL_LABELS_FILE_PATH = _folder_classes
 
     if MODEL_LABELS_FILE_PATH is not None:
         with open(MODEL_LABELS_FILE_PATH, "r", encoding="utf-8") as f:
@@ -207,11 +206,19 @@ def load_config(is_reload=False):
         
     else:
         logging.basicConfig(
-            level=logging.INFO, 
+            level=logging.INFO,
             format='[%(asctime)s] %(levelname)s: %(message)s',
             datefmt='%H:%M:%S'
         )
-    
+
+    # Labels source (helps debug wrong class names, e.g. "class_2"): show whether a per-model
+    # classes.txt was used or the CLASSES.default_labels fallback, plus the resolved class list.
+    if MODEL_LABELS_FILE_PATH is not None:
+        logging.info(f"[CONFIG] Labels: loaded {len(CLASSES)} class(es) from {MODEL_LABELS_FILE_PATH}: {list(CLASSES)}")
+    else:
+        _amf = os.path.dirname(_active_model) if _active_model else "?"
+        logging.info(f"[CONFIG] Labels: no classes.txt in {_amf}; using default_labels: {list(CLASSES)}")
+
     action = "reloaded" if is_reload else "loaded"
     debug_status = "ON" if DEBUG_MODE else "OFF"
     _videos = ", ".join(os.path.basename(v) for v in VIDEO_FILE_PATHS)

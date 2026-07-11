@@ -172,10 +172,13 @@ class WebServer:
                 'benchmark_loop': BENCHMARK_LOOP,
                 'inference_device': INFERENCE_DEVICE,
                 'debug_mode': DEBUG_MODE,
-                'model_rknn': os.path.basename(MODEL_PATH) if MODEL_PATH else '',
-                'model_onnx': os.path.basename(ONNX_MODEL_PATH) if ONNX_MODEL_PATH else '',
-                'model_mnn': os.path.basename(MNN_MODEL_PATH) if MNN_MODEL_PATH else '',
-                'model_hailo8': os.path.basename(HAILO8_MODEL_PATH) if HAILO8_MODEL_PATH else '',
+                # Models are folder-based: each model lives in assets/models/<name>/ with its
+                # per-format files. The dropdowns select the model FOLDER name, so report the
+                # parent-folder name of each configured file path.
+                'model_rknn': os.path.basename(os.path.dirname(MODEL_PATH)) if MODEL_PATH else '',
+                'model_onnx': os.path.basename(os.path.dirname(ONNX_MODEL_PATH)) if ONNX_MODEL_PATH else '',
+                'model_mnn': os.path.basename(os.path.dirname(MNN_MODEL_PATH)) if MNN_MODEL_PATH else '',
+                'model_hailo8': os.path.basename(os.path.dirname(HAILO8_MODEL_PATH)) if HAILO8_MODEL_PATH else '',
                 'paths': {
                     'model_rknn': MODEL_PATH,
                     'model_onnx': ONNX_MODEL_PATH,
@@ -219,25 +222,29 @@ class WebServer:
                 if 'inference_device' in data:
                     parser.set('INFERENCE', 'inference_device', data['inference_device'])
                     
+                # Models are folder-based: the dropdown value is a model FOLDER name
+                # (assets/models/<folder>/). Resolve it to the single file of the requested
+                # format inside that folder and store that path in config.ini.
+                def _resolve_model(folder_name, ext):
+                    d = os.path.join(BASE_DIR, 'assets', 'models', folder_name)
+                    if os.path.isdir(d):
+                        for f in sorted(os.listdir(d)):
+                            if f.lower().endswith(ext):
+                                return f"assets/models/{folder_name}/{f}"
+                    # back-compat: treat the value as a literal path under assets/models/
+                    return f"assets/models/{folder_name}"
+
                 if 'model_rknn' in data and data['model_rknn']:
-                    # Update the model_rknn path to include assets/models/
-                    model_path = f"assets/models/{data['model_rknn']}"
-                    parser.set('PATHS', 'model_rknn', model_path)
-                    
+                    parser.set('PATHS', 'model_rknn', _resolve_model(data['model_rknn'], '.rknn'))
+
                 if 'model_onnx' in data and data['model_onnx']:
-                    # Update the model_onnx path to include assets/models/
-                    model_path = f"assets/models/{data['model_onnx']}"
-                    parser.set('PATHS', 'model_onnx', model_path)
+                    parser.set('PATHS', 'model_onnx', _resolve_model(data['model_onnx'], '.onnx'))
 
                 if 'model_mnn' in data and data['model_mnn']:
-                    # Update the model_mnn path to include assets/models/
-                    model_path = f"assets/models/{data['model_mnn']}"
-                    parser.set('PATHS', 'model_mnn', model_path)
+                    parser.set('PATHS', 'model_mnn', _resolve_model(data['model_mnn'], '.mnn'))
 
                 if 'model_hailo8' in data and data['model_hailo8']:
-                    # Update the model_hailo8 (.hef) path to include assets/models/
-                    model_path = f"assets/models/{data['model_hailo8']}"
-                    parser.set('PATHS', 'model_hailo8', model_path)
+                    parser.set('PATHS', 'model_hailo8', _resolve_model(data['model_hailo8'], '.hef'))
 
                 if 'max_inference_instances' in data:
                     parser.set('INFERENCE', 'max_inference_instances', str(data['max_inference_instances']))
@@ -271,42 +278,32 @@ class WebServer:
                 
         @self.app.route('/api/models', methods=['GET'])
         def get_available_models():
-            """Get available RKNN and ONNX models from assets/models directory"""
+            """List available models (folder-based).
+
+            Each model is a subfolder of assets/models/ holding its per-format files
+            (e.g. threats_N/threats_n.rknn, threats_N/threats_n.onnx, .mnn, .hef). Each format
+            list contains the MODEL (folder) names that provide that format, so a given model
+            only appears in a dropdown for the formats it actually has.
+            """
             try:
                 models_dir = os.path.join(BASE_DIR, 'assets', 'models')
-                
-                if not os.path.exists(models_dir):
-                    return jsonify({'rknn_models': [], 'onnx_models': [], 'mnn_models': [], 'hef_models': []})
+                result = {'rknn_models': [], 'onnx_models': [], 'mnn_models': [], 'hef_models': []}
+                if not os.path.isdir(models_dir):
+                    return jsonify(result)
 
-                rknn_models = []
-                onnx_models = []
-                mnn_models = []
-                hef_models = []
+                ext_key = {'.rknn': 'rknn_models', '.onnx': 'onnx_models',
+                           '.mnn': 'mnn_models', '.hef': 'hef_models'}
+                for name in sorted(os.listdir(models_dir)):
+                    folder = os.path.join(models_dir, name)
+                    if not os.path.isdir(folder):
+                        continue  # folder-based only; ignore stray flat files
+                    present = {os.path.splitext(f)[1].lower() for f in os.listdir(folder)}
+                    for ext, key in ext_key.items():
+                        if ext in present:
+                            result[key].append(name)
 
-                # Scan for model files
-                for filename in os.listdir(models_dir):
-                    if filename.lower().endswith('.rknn'):
-                        rknn_models.append(filename)
-                    elif filename.lower().endswith('.onnx'):
-                        onnx_models.append(filename)
-                    elif filename.lower().endswith('.mnn'):
-                        mnn_models.append(filename)
-                    elif filename.lower().endswith('.hef'):
-                        hef_models.append(filename)
+                return jsonify(result)
 
-                # Sort the lists for better UX
-                rknn_models.sort()
-                onnx_models.sort()
-                mnn_models.sort()
-                hef_models.sort()
-
-                return jsonify({
-                    'rknn_models': rknn_models,
-                    'onnx_models': onnx_models,
-                    'mnn_models': mnn_models,
-                    'hef_models': hef_models
-                })
-                
             except Exception as e:
                 return jsonify({'status': 'error', 'message': str(e)}), 500
                 
@@ -368,10 +365,24 @@ class WebServer:
         def get_cameras():
             """Get information about available cameras"""
             try:
-                camera_count = self.video_manager.get_camera_count()
+                infos = self.video_manager.get_cameras_info()
+                if infos:
+                    cameras = [{
+                        'id': info.get('number', idx),
+                        'name': f"Camera {info.get('number', idx)}",
+                        'label': info.get('label') or f"Camera {info.get('number', idx)}",
+                        'model': info.get('model', ''),
+                        'port': info.get('port', ''),
+                        'serial': info.get('serial', ''),
+                    } for idx, info in enumerate(infos)]
+                else:
+                    camera_count = self.video_manager.get_camera_count()
+                    cameras = [{'id': i, 'name': f'Camera {i}', 'label': f'Camera {i}',
+                                'model': '', 'port': '', 'serial': ''}
+                               for i in range(camera_count)]
                 return jsonify({
-                    'camera_count': camera_count,
-                    'cameras': [{'id': i, 'name': f'Camera {i}'} for i in range(camera_count)]
+                    'camera_count': len(cameras),
+                    'cameras': cameras
                 })
             except Exception as e:
                 return jsonify({'error': str(e)}), 500

@@ -23,6 +23,7 @@ class YOLOWebInterface {
         };
         this.maxDataPoints = 60; // 1 minute interval
         this.currentCameraCount = 1;
+        this._camerasSig = null;
         this.init();
     }
 
@@ -356,6 +357,11 @@ class YOLOWebInterface {
                 stopBtn.disabled = false;
                 if (saveConfigBtn) saveConfigBtn.disabled = true;
                 this.updateConnectionStatus('processing');
+                // In camera mode, refine the stream layout to the actually
+                // detected cameras so each shows its correct number + label.
+                if (status.current_mode === 'camera') {
+                    this.updateDetectedCameras();
+                }
             } else {
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
@@ -363,6 +369,7 @@ class YOLOWebInterface {
                 if (this.connectionStatus !== 'disconnected') {
                     this.updateConnectionStatus('connected');
                 }
+                this._camerasSig = null;
             }
             
         } catch (error) {
@@ -553,6 +560,56 @@ class YOLOWebInterface {
         }
     }
     
+    async updateDetectedCameras() {
+        try {
+            const response = await fetch('/api/cameras');
+            const data = await response.json();
+            const cams = data.cameras || [];
+            if (!cams.length) return;
+            const sig = JSON.stringify(cams.map(c => [c.id, c.label]));
+            if (sig === this._camerasSig) return;  // unchanged; don't reload streams
+            this._camerasSig = sig;
+            this.renderDetectedCameras(cams);
+        } catch (error) {
+            // transient error; keep the current view
+        }
+    }
+
+    renderDetectedCameras(cams) {
+        const singleView = document.getElementById('single-camera-view');
+        const multiView = document.getElementById('multi-camera-view');
+        singleView.style.display = 'none';
+        multiView.style.display = 'block';
+        multiView.innerHTML = '';
+        const count = cams.length;
+        multiView.className = 'multi-camera-container';
+        if (count === 2) multiView.classList.add('two-cameras');
+        else if (count === 3) multiView.classList.add('three-cameras');
+        else if (count === 4) multiView.classList.add('four-cameras');
+        else if (count > 4) multiView.classList.add('many-cameras');
+        cams.forEach((cam) => {
+            const cameraDiv = document.createElement('div');
+            cameraDiv.className = 'camera-container';
+
+            const cameraImg = document.createElement('img');
+            cameraImg.src = `/video_feed/${cam.id}`;
+            cameraImg.alt = `${cam.label} Stream`;
+            cameraImg.className = 'video-display';
+
+            const cameraLabel = document.createElement('div');
+            cameraLabel.className = 'camera-label';
+            cameraLabel.textContent = `Camera ${cam.id} \u2014 ${cam.label}`;
+
+            cameraDiv.appendChild(cameraImg);
+            cameraDiv.appendChild(cameraLabel);
+            multiView.appendChild(cameraDiv);
+
+            cameraImg.addEventListener('error', () => {
+                cameraImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjY2NjIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DYW1lcmEgVW5hdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+            });
+        });
+    }
+
     updateCameraView(cameraCount) {
         const singleView = document.getElementById('single-camera-view');
         const multiView = document.getElementById('multi-camera-view');

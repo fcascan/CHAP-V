@@ -13,7 +13,7 @@ import statistics
 
 def save_instance_performance_data(csv_rows, results_dir, device_name, run_timestamp, label,
                                    logger=None, npu_core_id=None, model_name=None,
-                                   benchmark_video=None, camera_index=None):
+                                   benchmark_video=None, camera_index=None, camera_identity=None):
     """Write per-instance performance CSV and trigger graph generation.
 
     Args:
@@ -27,6 +27,7 @@ def save_instance_performance_data(csv_rows, results_dir, device_name, run_times
         model_name: model filename, e.g. "april22_2.rknn"
         benchmark_video: video filename used in benchmark mode, e.g. "benchmark.mp4"
         camera_index: camera index used in camera mode, e.g. 0
+        camera_identity: human-readable physical camera id (model + USB port)
     """
     def _log(msg):
         if logger:
@@ -56,7 +57,7 @@ def save_instance_performance_data(csv_rows, results_dir, device_name, run_times
         auto_analyze_latest_csv(device_name=device_name, logger=logger, csv_filepath=csv_path,
                                 npu_core_id=npu_core_id, model_name=model_name,
                                 benchmark_video=benchmark_video, camera_index=camera_index,
-                                inference_device=device_name)
+                                inference_device=device_name, camera_identity=camera_identity)
     except Exception as e:
         _log(f"[{label}] Graph generation failed: {e}")
 
@@ -247,7 +248,8 @@ def print_csv_analysis(csv_filepath):
 
 def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
                             npu_core_id=None, model_name=None,
-                            benchmark_video=None, camera_index=None, inference_device=None):
+                            benchmark_video=None, camera_index=None, inference_device=None,
+                            camera_identity=None):
     """Automatically find and analyze the most recent performance CSV file."""
 
     def log_message(msg):
@@ -301,7 +303,10 @@ def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
                 if benchmark_video:
                     f.write(f"Video: {benchmark_video}\n")
                 if camera_index is not None:
-                    f.write(f"Camera: {camera_index}\n")
+                    cam_line = f"Camera: {camera_index}"
+                    if camera_identity:
+                        cam_line += f" ({camera_identity})"
+                    f.write(cam_line + "\n")
                 f.write("\n")
                 f.write(analysis_text)
 
