@@ -296,23 +296,40 @@ mnnconvert -f ONNX --modelFile detectS2.onnx --MNNModel detectS2.mnn --bizCode b
 ```
 
 ### System dependencies (one-time setup)
-The PyPI `mnn` wheel is **CPU-only** (no OpenCL backend). MNN with OpenCL must be **built from source**
-(already done on this device):
+The PyPI `mnn` wheel is **CPU-only** (no OpenCL backend), so MNN must be **built from source**. Just as
+important on the RK3588: recent MNN (≥ 3.x) enables the Arm **SME2** backend + **KleidiAI** microkernels
+**by default** for arm64 — but the RK3588 (Cortex-A76/A55) has **no SME2/SVE2/i8mm**, and MNN's SME2 path
+is **not gated by CPU detection**, so a default build executes SME2 instructions (`smstart`/`fmopa`/`rdsvl`)
+on a CPU that lacks them and dies with **`illegal hardware instruction` (SIGILL)** the moment a GPU-MNN
+session is created. The build therefore **must** pass `-DMNN_SME2=OFF -DMNN_KLEIDIAI=OFF`.
+
+Use the provided script — it clones + patches + builds + installs into the project venv, provisions the
+OpenCL symlink, and verifies the result has no SME2 code:
 
 ```bash
-git clone --depth 1 https://github.com/alibaba/MNN.git
-cd MNN/pymnn/pip_package
-# build_deps.py: set MNN_ARM82=OFF (gcc 15 ICEs on the ARM82 fp16 backend; not needed for GPU)
-CMAKE_POLICY_VERSION_MINIMUM=3.5 venv/bin/python build_deps.py opencl   # cmake 4 policy compat
-venv/bin/python setup.py install --deps opencl                         # installs into the project venv
+./setup.sh                        # first: system deps + venv + RKNPU
+./installation/build_mnn_opencl.sh   # then: MNN with OpenCL (SME2/KleidiAI OFF) into ./venv
 ```
 
-MNN's OpenCL loader dlopens a bare `libOpenCL.so`, but this device ships only `libOpenCL.so.1`, so a
-symlink is required (the app provisions it at startup when run as root, or set it once manually):
+<details><summary>Manual equivalent (what the script runs)</summary>
 
 ```bash
+git clone https://github.com/alibaba/MNN.git ~/mnn_build/MNN && cd ~/mnn_build/MNN/pymnn/pip_package
+# In build_deps.py, append to the base extra_opts line:  -DMNN_SME2=OFF -DMNN_KLEIDIAI=OFF
+# (MNN_ARM82=OFF is already handled by build_deps.py; gcc-15 ICEs on the ARM82 fp16 backend.)
+source <repo>/venv/bin/activate
+CMAKE_POLICY_VERSION_MINIMUM=3.5 python build_deps.py opencl   # build static MNN libs (cmake-4 policy compat)
+rm -rf build          # REQUIRED: else distutils copies the STALE cached extension (still SME2-linked)
+python setup.py install --deps opencl                         # build+install the extension into the venv
+# MNN's loader dlopens a bare libOpenCL.so; this device ships only libOpenCL.so.1:
 sudo ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/libOpenCL.so
 ```
+</details>
+
+> **Regression note.** GPU-MNN worked, then began crashing with SIGILL after MNN was re-cloned/rebuilt
+> at a version that defaults SME2/KleidiAI ON — not a model or conversion problem (the previously-good
+> `.mnn` crashed identically). The fix above (SME2/KleidiAI OFF) is now baked into
+> `installation/build_mnn_opencl.sh`.
 
 > **Notes.** GPU-MNN disables OpenCV's OpenCL (T-API) within its process so it does not contend with
 > MNN for the single Mali OpenCL context (they conflict, producing NaN). The first run auto-tunes the
