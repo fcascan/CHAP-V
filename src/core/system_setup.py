@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """system_setup.py
 System setup and configuration for YOLO RKNN/NPU project
 by fcascan 2026
@@ -42,10 +44,12 @@ def setup_inference_device(inference_device):
             try:
                 from importlib import import_module
                 RKNNLite = import_module("rknnlite.api.rknn_lite").RKNNLite
-                from src.utils.rknn_post_processing import post_process
                 from src.utils.my_htop import log_npu_usage
                 print("[INFO] RKNN (RKNPU) libraries loaded successfully.")
-                return inference_device, True, {"RKNNLite": RKNNLite, "post_process": post_process, "log_npu_usage": log_npu_usage}
+                # NOTE: inference decoding uses src/rockchip/yolo11_infer.py::post_process (the live,
+                # Apache-2.0-attributed decoder). The old src/utils/rknn_post_processing.py duplicate was
+                # removed as dead code.
+                return inference_device, True, {"RKNNLite": RKNNLite, "log_npu_usage": log_npu_usage}
             except ImportError as e:
                 print(f"[WARNING] RKNN (RKNPU) libraries could not be imported: {e}")
 

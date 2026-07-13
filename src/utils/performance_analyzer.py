@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """performance_analyzer.py
 Performance analysis and visualization module for YOLO RKNN processing metrics
 by fcascan 2026

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """web_video_processing.py
 Benchmark video processing with web interface integration.
 Each video stream runs in its own thread so all NPU cores work in parallel.

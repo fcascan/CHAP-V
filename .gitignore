@@ -59,3 +59,6 @@ AI_*.md
 
 # AI-generated docs (logbooks, analyses, etc.)
 /.ia-docs/
+
+# Rockchip RKNN Toolkit Lite2 wheels — download from github.com/airockchip/rknn-toolkit2 (not redistributed)
+installation/*.whl

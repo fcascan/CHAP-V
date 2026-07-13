@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """video_integration.py
 Video streaming integration for web interface
 by fcascan 2025
@@ -20,7 +22,6 @@ class VideoStreamManager:
         self.camera_frames = {}
         self.camera_locks = {}
         self.num_cameras = 1
-        self.cameras_info = []
         
     def start(self):
         """Start the video stream manager"""
@@ -45,20 +46,6 @@ class VideoStreamManager:
                 self.camera_locks[i] = threading.Lock()
                 self.camera_frames[i] = None
             
-    def set_cameras(self, camera_infos):
-        """Register detected cameras (list of info dicts) and init their buffers.
-
-        Each info dict carries the stable per-port identity: number, label,
-        model, port and serial. Consumed by the web API so every stream shows
-        the correct camera number and physical identity.
-        """
-        self.cameras_info = list(camera_infos)
-        self.set_camera_count(len(camera_infos))
-
-    def get_cameras_info(self):
-        """Return the list of detected camera info dicts (may be empty)."""
-        return list(self.cameras_info)
-
     def update_frame(self, frame, camera_id=0):
         """Update the latest frame for streaming
         

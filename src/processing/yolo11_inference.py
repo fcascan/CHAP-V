@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """yolo11_inference.py
 YOLO11 Inference Engine Integration
 by fcascan 2026

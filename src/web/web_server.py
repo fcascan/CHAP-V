@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """web_server.py
 Flask web server for YOLO RKNN web interface
 by fcascan 2026

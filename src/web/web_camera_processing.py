@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """web_camera_processing.py
 Camera processing with web interface integration.
 Each camera runs in its own thread so all NPU cores work in parallel.

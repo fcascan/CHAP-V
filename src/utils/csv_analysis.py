@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """csv_analysis.py
 CSV performance analysis helpers for YOLO RKNN processing.
 by fcascan 2026
@@ -13,7 +15,7 @@ import statistics
 
 def save_instance_performance_data(csv_rows, results_dir, device_name, run_timestamp, label,
                                    logger=None, npu_core_id=None, model_name=None,
-                                   benchmark_video=None, camera_index=None, camera_identity=None):
+                                   benchmark_video=None, camera_index=None):
     """Write per-instance performance CSV and trigger graph generation.
 
     Args:
@@ -27,7 +29,6 @@ def save_instance_performance_data(csv_rows, results_dir, device_name, run_times
         model_name: model filename, e.g. "april22_2.rknn"
         benchmark_video: video filename used in benchmark mode, e.g. "benchmark.mp4"
         camera_index: camera index used in camera mode, e.g. 0
-        camera_identity: human-readable physical camera id (model + USB port)
     """
     def _log(msg):
         if logger:
@@ -57,7 +58,7 @@ def save_instance_performance_data(csv_rows, results_dir, device_name, run_times
         auto_analyze_latest_csv(device_name=device_name, logger=logger, csv_filepath=csv_path,
                                 npu_core_id=npu_core_id, model_name=model_name,
                                 benchmark_video=benchmark_video, camera_index=camera_index,
-                                inference_device=device_name, camera_identity=camera_identity)
+                                inference_device=device_name)
     except Exception as e:
         _log(f"[{label}] Graph generation failed: {e}")
 
@@ -248,8 +249,7 @@ def print_csv_analysis(csv_filepath):
 
 def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
                             npu_core_id=None, model_name=None,
-                            benchmark_video=None, camera_index=None, inference_device=None,
-                            camera_identity=None):
+                            benchmark_video=None, camera_index=None, inference_device=None):
     """Automatically find and analyze the most recent performance CSV file."""
 
     def log_message(msg):
@@ -303,10 +303,7 @@ def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
                 if benchmark_video:
                     f.write(f"Video: {benchmark_video}\n")
                 if camera_index is not None:
-                    cam_line = f"Camera: {camera_index}"
-                    if camera_identity:
-                        cam_line += f" ({camera_identity})"
-                    f.write(cam_line + "\n")
+                    f.write(f"Camera: {camera_index}\n")
                 f.write("\n")
                 f.write(analysis_text)
 

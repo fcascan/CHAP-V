@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 # =============================================================================
 # opencv_executor.py
 # YOLO11 GPU inference on the Mali-G610 via OpenCV-DNN with the OpenCL target.

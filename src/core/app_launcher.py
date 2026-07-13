@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """Application launcher helpers for console and web entry points.
 
 This module keeps the execution paths explicit while leaving CLI parsing to

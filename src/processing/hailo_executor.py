@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 # =============================================================================
 # hailo_executor.py
 # YOLO11 inference on the Hailo-8 (26 TOPS) external NPU over M.2/PCIe, via HailoRT.

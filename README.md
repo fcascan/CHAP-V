@@ -437,11 +437,21 @@ occur — a realistic fit for evaluating weapon detection.
 - **benchmark2.mp4** — *Surveillance video: Boy robs gas station, fires shot*
   (https://www.youtube.com/watch?v=y-QXYbd4Zb0)
 
+> These clips are © their respective YouTube creators and are **NOT** covered by this project's
+> AGPL-3.0 license; they are bundled only for reproducible benchmarking/research. Point
+> `[PATHS] benchmark_video_*` at your own footage to replace them.
+
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0) — see [LICENSE.txt](LICENSE.txt).
+
+Parts of `src/rockchip/` are derived from [airockchip/rknn_model_zoo](https://github.com/airockchip/rknn_model_zoo) (Apache-2.0); their original license/attribution headers are retained (Apache-2.0 permits inclusion in an AGPL-3.0 work). As this is a **network application** (web server), AGPL-3.0 §13 requires that users who interact with it over a network be offered the Corresponding Source.
 
 ## Acknowledgments
 - libmali (https://github.com/tsukumijima/libmali-rockchip/releases)
+- **Ultralytics YOLO11 - Rockchip's Fork** (AGPL-3.0) — training/export; vendored under `src/rockchip/ultralytics/`.
+- **Rockchip rknn_model_zoo** (Apache-2.0) — `src/rockchip/*` derives from it (original license headers retained).
+- **Rockchip RKNN Toolkit Lite2** — runtime wheels (`installation/*.whl`); download from [airockchip/rknn-toolkit2](https://github.com/airockchip/rknn-toolkit2) (not redistributed here).
+- **Hailo** HailoRT / Dataflow Compiler — proprietary; from the [Hailo Developer Zone](https://hailo.ai/developer-zone/).
 - RKNN Toolkit2 (https://github.com/airockchip/rknn-toolkit2)
 - RKNN Model Zoo (https://github.com/airockchip/rknn_model_zoo)
 - YOLO Vision (https://github.com/ultralytics/ultralytics)
