@@ -69,6 +69,46 @@ def calculate_time_axis_intervals(total_points):
     else:  # More than 60 minutes
         return max(1, total_points // 60), "1hr"  # Every 1 hour equivalent
 
+
+def _nice_time_ticks(duration_s, target=10):
+    """Dynamic, integer-valued time-axis ticks spanning 0..duration_s.
+    Returns [(t_seconds, "<int><unit>"), ...] with ~`target` equidistant marks. The step is snapped to a
+    time-friendly ladder (1/2/5/10/15/30 · s, min, h …) and the unit (s/m/h) is DERIVED from the chosen
+    step, so labels are ALWAYS whole numbers and the axis scales from a few seconds to many hours.
+    Prefers integer tick values over hitting exactly `target` marks (per user preference)."""
+    if not duration_s or duration_s <= 0:
+        return []
+    ladder = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+              3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800]
+    step = next((s for s in ladder if duration_s / s <= target), None)
+    if step is None:  # longer than the ladder -> round up to a whole number of days
+        step = (int(duration_s // (target * 86400)) + 1) * 86400
+    if step % 3600 == 0:
+        unit, f = 'h', 3600
+    elif step % 60 == 0:
+        unit, f = 'm', 60
+    else:
+        unit, f = 's', 1
+    ticks, t = [], 0
+    while t <= duration_s + 1e-6:
+        ticks.append((t, f"{t // f}{unit}"))
+        t += step
+    return ticks
+
+
+def _draw_time_axis(draw, gx, gw, y_bottom, duration_s, ticks, font):
+    """Draw x-axis time ticks at their TRUE time fraction (x = gx + t/duration·gw), skipping 0.
+    Shared by every report graph so they all use one dynamic, integer-valued axis that fits the run
+    duration (fixes the old per-index labels that collapsed to '0min' on short runs)."""
+    if not duration_s or duration_s <= 0:
+        return
+    for t, label in ticks:
+        if t <= 0 or t > duration_s:
+            continue
+        x = gx + int(t / duration_s * gw)
+        draw.line([x, y_bottom, x, y_bottom + 5], fill='black', width=1)
+        draw.text((x - 12, y_bottom + 8), label, fill='gray', font=font)
+
 def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
                                 benchmark_video=None, camera_index=None, inference_device=None):
     """
@@ -261,6 +301,10 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         graph_y = y_pos + 40
         graph_width = 650
         graph_height = 180
+        # Dynamic time axis shared by every graph; computed from real duration once timestamps are
+        # parsed below (initialized here so it's always defined even if that block is skipped).
+        duration_s = 0.0
+        time_ticks = []
         
         # Draw inference time graph
         draw.rectangle([20, graph_y, 20 + graph_width, graph_y + graph_height], outline='black', width=2)
@@ -321,35 +365,15 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 else:
                     unit = 'h'; factor = 3600
 
-            sampled_count = len(sampled_data)
-            sample_indices = [min(i * step, len(inference_times) - 1) for i in range(sampled_count)]
-            # Show about 8 labels max, skip the first (zero) label
-            label_interval = max(1, sampled_count // 8) if sampled_count > 0 else 1
-            for idx_i in range(0, sampled_count, label_interval):
-                # skip first label (zero)
-                if idx_i == 0:
-                    continue
-                idx = sample_indices[idx_i]
-                x_pos = 20 + (idx_i * graph_width // sampled_count)
-                draw.line([x_pos, graph_y + graph_height, x_pos, graph_y + graph_height + 5], fill='black', width=1)
-                # compute label from timestamps if available
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    # fallback to seconds using frame index (assuming ~30fps)
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 15, graph_y + graph_height + 8), label, fill='gray', font=small_font)
+            # Real run duration for the dynamic time axis: timestamps first; fall back to cumulative
+            # frame time, then frame count @30 fps. All graphs reuse `time_ticks` (see _nice_time_ticks).
+            duration_s = total_seconds if total_seconds else 0.0
+            if not duration_s or duration_s <= 0:
+                _tft = data.get('total_frame_time_ms', [])
+                duration_s = (sum(_tft) / 1000.0) if _tft else (len(inference_times) / 30.0)
+            time_ticks = _nice_time_ticks(duration_s)
+
+            _draw_time_axis(draw, 20, graph_width, graph_y + graph_height, duration_s, time_ticks, small_font)
             
             if len(sampled_data) > 1:
                 for i in range(len(sampled_data) - 1):
@@ -389,33 +413,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = fps_upper_bound - (i * fps_range / 4)
                 draw.text((graph2_x + 5, y_grid - 8), f"{val:.1f}", fill='gray', font=small_font)
             
-            # Draw time axis labels using parsed timestamps when available (skip zero)
-            sampled_count_fps = len(sampled_fps)
-            sample_indices_fps = [min(i * step, len(fps_data) - 1) for i in range(sampled_count_fps)]
-            label_interval_fps = max(1, sampled_count_fps // 8) if sampled_count_fps > 0 else 1
-            for idx_i in range(0, sampled_count_fps, label_interval_fps):
-                # skip first label (zero)
-                if idx_i == 0:
-                    continue
-                idx = sample_indices_fps[idx_i]
-                x_pos = graph2_x + (idx_i * graph_width // sampled_count_fps)
-                draw.line([x_pos, graph_y + graph_height, x_pos, graph_y + graph_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 15, graph_y + graph_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, graph2_x, graph_width, graph_y + graph_height, duration_s, time_ticks, small_font)
             
             if len(sampled_fps) > 1:
                 for i in range(len(sampled_fps) - 1):
@@ -454,32 +453,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = 100 - (i * 25)
                 draw.text((graph4_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
             
-            # Draw time axis labels for NPU individual
-            sampled_count_npu = len(sampled_npu)
-            sample_indices_npu = [min(i * step, len(npu_core0) - 1) for i in range(sampled_count_npu)]
-            label_interval_npu = max(1, sampled_count_npu // 8) if sampled_count_npu > 0 else 1
-            for idx_i in range(0, sampled_count_npu, label_interval_npu):
-                if idx_i == 0:
-                    continue
-                idx = sample_indices_npu[idx_i]
-                x_pos = graph4_x + (idx_i * graph4_width // sampled_count_npu)
-                draw.line([x_pos, graph4_y + graph4_height, x_pos, graph4_y + graph4_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 12, graph4_y + graph4_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, graph4_x, graph4_width, graph4_y + graph4_height, duration_s, time_ticks, small_font)
             
             if len(sampled_npu) > 1:
                 # NPU line
@@ -512,32 +487,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = 100 - (i * 25)
                 draw.text((graph5_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
             
-            # Draw time axis labels for CPU individual
-            sampled_count_cpu = len(sampled_cpu)
-            sample_indices_cpu = [min(i * step, len(cpu_usage) - 1) for i in range(sampled_count_cpu)]
-            label_interval_cpu = max(1, sampled_count_cpu // 8) if sampled_count_cpu > 0 else 1
-            for idx_i in range(0, sampled_count_cpu, label_interval_cpu):
-                if idx_i == 0:
-                    continue
-                idx = sample_indices_cpu[idx_i]
-                x_pos = graph5_x + (idx_i * graph5_width // sampled_count_cpu)
-                draw.line([x_pos, graph5_y + graph5_height, x_pos, graph5_y + graph5_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 12, graph5_y + graph5_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, graph5_x, graph5_width, graph5_y + graph5_height, duration_s, time_ticks, small_font)
             
             if len(sampled_cpu) > 1:
                 # CPU line
@@ -575,32 +526,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = 100 - (i * 25)
                 draw.text((graph3_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
 
-            # Draw time axis labels
-            sampled_count_h = len(sampled_hailo)
-            sample_indices_h = [min(i * step, len(hailo_usage) - 1) for i in range(sampled_count_h)]
-            label_interval_h = max(1, sampled_count_h // 8) if sampled_count_h > 0 else 1
-            for idx_i in range(0, sampled_count_h, label_interval_h):
-                if idx_i == 0:
-                    continue
-                idx = sample_indices_h[idx_i]
-                x_pos = graph3_x + (idx_i * graph_width // sampled_count_h)
-                draw.line([x_pos, graph3_y + graph3_height, x_pos, graph3_y + graph3_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 12, graph3_y + graph3_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, graph3_x, graph_width, graph3_y + graph3_height, duration_s, time_ticks, small_font)
 
             if len(sampled_hailo) > 1:
                 for i in range(len(sampled_hailo) - 1):
@@ -649,32 +576,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 val = 100 - (i * 25)
                 draw.text((graph6_x + 5, y_grid - 8), f"{val}%", fill='gray', font=small_font)
 
-            # Time axis labels
-            sampled_count_gpu = len(sampled_gpu)
-            sample_indices_gpu = [min(i * step, len(gpu_usage) - 1) for i in range(sampled_count_gpu)]
-            label_interval_gpu = max(1, sampled_count_gpu // 8) if sampled_count_gpu > 0 else 1
-            for idx_i in range(0, sampled_count_gpu, label_interval_gpu):
-                if idx_i == 0:
-                    continue
-                idx = sample_indices_gpu[idx_i]
-                x_pos = graph6_x + (idx_i * graph6_width // sampled_count_gpu)
-                draw.line([x_pos, graph6_y + graph6_height, x_pos, graph6_y + graph6_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 12, graph6_y + graph6_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, graph6_x, graph6_width, graph6_y + graph6_height, duration_s, time_ticks, small_font)
 
             if len(sampled_gpu) > 1:
                 for i in range(len(sampled_gpu) - 1):
@@ -705,32 +608,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
 
         _ref = cpu_usage if len(cpu_usage) > 0 else npu_core0
         if len(_ref) > 0:
-            sampled_ref = _ref[::step][:sample_size]
-            sc = len(sampled_ref)
-            si = [min(i * step, len(_ref) - 1) for i in range(sc)]
-            li = max(1, sc // 12) if sc > 0 else 1
-            for idx_i in range(0, sc, li):
-                if idx_i == 0:
-                    continue
-                idx = si[idx_i]
-                x_pos = cmp_x + (idx_i * cmp_width // sc)
-                draw.line([x_pos, cmp_y + cmp_height, x_pos, cmp_y + cmp_height + 5], fill='black', width=1)
-                label = None
-                if first_ts and idx < len(parsed_ts) and parsed_ts[idx]:
-                    diff = (parsed_ts[idx] - first_ts).total_seconds()
-                    if diff > 0:
-                        if unit == 's':
-                            label = f"{int(diff)}s"
-                        elif unit == 'm':
-                            label = f"{int(diff // 60)}m"
-                        else:
-                            label = f"{int(diff // 3600)}h"
-                else:
-                    sec = idx / 30
-                    if sec > 0:
-                        label = f"{int(sec)}s"
-                if label:
-                    draw.text((x_pos - 12, cmp_y + cmp_height + 8), label, fill='gray', font=small_font)
+            # Dynamic time axis (shared helper)
+            _draw_time_axis(draw, cmp_x, cmp_width, cmp_y + cmp_height, duration_s, time_ticks, small_font)
 
             # Overlay one line per backend (0% when a backend is not the active one).
             for _series, _color in ((cpu_usage, 'purple'), (npu_core0, 'orange'), (gpu_usage, 'red'), (hailo_usage, 'teal')):
