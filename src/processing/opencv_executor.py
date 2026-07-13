@@ -59,7 +59,7 @@ import cv2
 # frame and the "consider to specify kernel configuration cache directory" warning.
 # Pointing OPENCV_OCL4DNN_CONFIG_PATH at a writable dir makes the tuned configs
 # persist across runs, so only the very first run pays the tuning cost.
-_OCL4DNN_CACHE = os.path.expanduser('~/.cache/PythonYoloRKNPU/ocl4dnn')
+_OCL4DNN_CACHE = os.path.expanduser('~/.cache/CHAP-V/ocl4dnn')
 try:
     os.makedirs(_OCL4DNN_CACHE, exist_ok=True)
     os.environ.setdefault('OPENCV_OCL4DNN_CONFIG_PATH', _OCL4DNN_CACHE)

@@ -1,4 +1,8 @@
-# Python YOLO RKNN/NPU
+# CHAP-V: Comparative Hardware Accelerator Profiler for Vision
+
+This project responds to the thesis:
+COMPARATIVE PERFORMANCE ANALYSIS OF HARDWARE ACCELERATION ARCHITECTURES FOR COMPUTER VISION NEURAL INFERENCE IN EDGE ENVIRONMENTS
+
 
 Real-time object detection using YOLO v11 models on RK3588 (with Orange Pi 5 Max).
 A project for comparison between CPU, GPU, RKNPU & Hailo-8 inference with **Web Interface** support.
@@ -28,16 +32,16 @@ To avoid conflicts with operating system packages (PEP 668), this project uses a
 Simply run the automatic installation script:
 
 ```bash
-git clone https://github.com/fcascan/PythonYoloRKNPU.git
-cd PythonYoloRKNPU
+git clone https://github.com/fcascan/CHAP-V.git
+cd CHAP-V
 chmod +x setup.sh
 ./setup.sh
 ```
 
 ### Console Mode (Traditional)
 ```bash
-git clone https://github.com/fcascan/PythonYoloRKNPU.git
-cd PythonYoloRKNPU
+git clone https://github.com/fcascan/CHAP-V.git
+cd CHAP-V
 sudo python3 main.py
 ```
 
@@ -243,7 +247,7 @@ see [GPU-MNN Inference](#gpu-mnn-inference-mali-g610)). Figures are approximate;
 adds a one-time ~50 s OpenCL kernel auto-tuning.
 
 > The first GPU run auto-tunes the OpenCL convolution kernels (slower first frame); the tuned
-> configs are cached under `~/.cache/PythonYoloRKNPU/ocl4dnn`, so later runs start faster.
+> configs are cached under `~/.cache/CHAP-V/ocl4dnn`, so later runs start faster.
 
 ---
 
