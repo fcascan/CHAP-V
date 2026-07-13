@@ -1,0 +1,192 @@
+ contentultralytics
+Downloading httpsgithub.comultralyticsassetsreleasesdownloadv8.4.0yolo11x.pt to 'yolo11x.pt' 100% ━━━━━━━━━━━━ 109.3MB 260.4MBs 0.4s
+✅ Checkpoint backup enabled (every 1 epochs + on new best) → contentdriveMyDriveYOLO_checkpoints
+Ultralytics 8.4.90 🚀 Python-3.12.13 torch-2.11.0+cu128 CUDA0 (Tesla T4, 14913MiB)
+enginetrainer agnostic_nms=False, amp=True, angle=1.0, augment=False, auto_augment=randaugment, batch=-1, bgr=0.0, box=7.5, cache=True, cfg=None, classes=None, close_mosaic=10, cls=0.5, cls_pw=0.0, compile=False, conf=None, copy_paste=0.0, copy_paste_mode=flip, cos_lr=False, cutmix=0.0, data=threat-detection-project-1data.yaml, degrees=0.0, deterministic=True, device=0, dfl=1.5, dis=6.0, distill_model=None, dnn=False, dropout=0.0, dynamic=False, embed=None, end2end=None, epochs=50, erasing=0.4, exist_ok=False, fliplr=0.5, flipud=0.0, format=torchscript, fraction=1.0, freeze=None, hsv_h=0.015, hsv_s=0.7, hsv_v=0.4, imgsz=640, iou=0.7, keras=False, kobj=1.0, line_width=None, lr0=0.01, lrf=0.01, mask_ratio=4, max_det=300, mixup=0.0, mode=train, model=yolo11x.pt, momentum=0.937, mosaic=1.0, multi_scale=0.0, name=threat-detection-project-yolo11x_training, nbs=64, nms=False, opset=None, optimize=False, optimizer=auto, overlap_mask=True, patience=6, perspective=0.0, plots=True, pose=12.0, pretrained=True, profile=False, project=threat-detection-project_yolo11x, quantize=None, rect=False, resume=False, retina_masks=False, rle=1.0, save=True, save_conf=False, save_crop=False, save_dir=contentultralyticsrunsdetectthreat-detection-project_yolo11xthreat-detection-project-yolo11x_training, save_frames=False, save_json=False, save_period=-1, save_txt=False, scale=0.5, seed=0, shear=0.0, show=False, show_boxes=True, show_conf=True, show_labels=True, simplify=True, single_cls=False, source=None, split=val, stream_buffer=False, task=detect, time=10, tracker=tracktrack.yaml, translate=0.1, val=True, verbose=True, vid_stride=1, visualize=False, warmup_bias_lr=0.1, warmup_epochs=3.0, warmup_momentum=0.8, weight_decay=0.0005, workers=8, workspace=None
+Downloading httpsultralytics.comassetsArial.ttf to 'root.configUltralyticsArial.ttf' 100% ━━━━━━━━━━━━ 755.1KB 23.8MBs 0.0s
+Overriding model.yaml nc=80 with nc=3
+
+                   from  n    params  module                                       arguments                     
+  0                  -1  1      2784  ultralytics.nn.modules.conv.Conv             [3, 96, 3, 2]                 
+  1                  -1  1    166272  ultralytics.nn.modules.conv.Conv             [96, 192, 3, 2]               
+  2                  -1  2    389760  ultralytics.nn.modules.block.C3k2            [192, 384, 2, True, 0.25]     
+  3                  -1  1   1327872  ultralytics.nn.modules.conv.Conv             [384, 384, 3, 2]              
+  4                  -1  2   1553664  ultralytics.nn.modules.block.C3k2            [384, 768, 2, True, 0.25]     
+  5                  -1  1   5309952  ultralytics.nn.modules.conv.Conv             [768, 768, 3, 2]              
+  6                  -1  2   5022720  ultralytics.nn.modules.block.C3k2            [768, 768, 2, True]           
+  7                  -1  1   5309952  ultralytics.nn.modules.conv.Conv             [768, 768, 3, 2]              
+  8                  -1  2   5022720  ultralytics.nn.modules.block.C3k2            [768, 768, 2, True]           
+  9                  -1  1   1476864  ultralytics.nn.modules.block.SPPF            [768, 768, 5]                 
+ 10                  -1  2   3264768  ultralytics.nn.modules.block.C2PSA           [768, 768, 2]                 
+ 11                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 12             [-1, 6]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 13                  -1  2   5612544  ultralytics.nn.modules.block.C3k2            [1536, 768, 2, True]          
+ 14                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 15             [-1, 4]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 16                  -1  2   1700352  ultralytics.nn.modules.block.C3k2            [1536, 384, 2, True]          
+ 17                  -1  1   1327872  ultralytics.nn.modules.conv.Conv             [384, 384, 3, 2]              
+ 18            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 19                  -1  2   5317632  ultralytics.nn.modules.block.C3k2            [1152, 768, 2, True]          
+ 20                  -1  1   5309952  ultralytics.nn.modules.conv.Conv             [768, 768, 3, 2]              
+ 21            [-1, 10]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 22                  -1  2   5612544  ultralytics.nn.modules.block.C3k2            [1536, 768, 2, True]          
+ 23        [16, 19, 22]  1   3149017  ultralytics.nn.modules.head.Detect           [3, 16, None, [384, 768, 768]]
+YOLO11x summary 358 layers, 56,877,241 parameters, 56,877,225 gradients, 195.5 GFLOPs
+
+Transferred 10091015 items from pretrained weights
+Freezing layer 'model.23.dfl.conv.weight'
+AMP running Automatic Mixed Precision (AMP) checks...
+Downloading httpsgithub.comultralyticsassetsreleasesdownloadv8.4.0yolo26n.pt to 'yolo26n.pt' 100% ━━━━━━━━━━━━ 5.3MB 102.0MBs 0.1s
+AMP checks passed ✅
+train Fast image access ✅ (ping 0.0±0.0 ms, read 1458.9±958.4 MBs, size 33.8 KB)
+train Scanning threat-detection-project-1trainlabels... 21840 images, 2 backgrounds, 0 corrupt 100% ━━━━━━━━━━━━ 2184021840 2.1Kits 10.2s
+train New cache created threat-detection-project-1trainlabels.cache
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+AutoBatch Computing optimal batch size for imgsz=640 at 60.0% CUDA memory utilization.
+AutoBatch CUDA0 (Tesla T4) 14.56G total, 0.49G reserved, 0.47G allocated, 13.60G free
+      Params      GFLOPs  GPU_mem (GB)  forward (ms) backward (ms)                   input                  output
+    56877241       195.5         3.746         98.94           nan        (1, 3, 640, 640)                    list
+    56877241       390.9         7.512         80.55           nan        (2, 3, 640, 640)                    list
+    56877241       781.8        12.621         145.2           nan        (4, 3, 640, 640)                    list
+    56877241        1564        22.656         242.5           nan        (8, 3, 640, 640)                    list
+CUDA out of memory. Tried to allocate 38.00 MiB. GPU 0 has a total capacity of 14.56 GiB of which 37.81 MiB is free. Including non-PyTorch memory, this process has 14.52 GiB memory in use. Of the allocated memory 14.25 GiB is allocated by PyTorch, and 117.63 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segmentsTrue to avoid fragmentation.  See documentation for Memory Management  (httpsdocs.pytorch.orgdocsstablenotescuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+AutoBatch Using batch-size 2 for CUDA0 7.96G14.56G (55%) ✅
+train Fast image access ✅ (ping 0.0±0.0 ms, read 1164.1±714.4 MBs, size 33.6 KB)
+train Scanning threat-detection-project-1trainlabels.cache... 21840 images, 2 backgrounds, 0 corrupt 100% ━━━━━━━━━━━━ 2184021840 4.8Gits 0.0s
+WARNING ⚠️ train 37.5GB RAM required to cache images with 50% safety margin but only 9.212.7GB available, not caching images
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+val Fast image access ✅ (ping 0.0±0.0 ms, read 381.8±154.2 MBs, size 41.5 KB)
+val Scanning threat-detection-project-1validlabels... 307 images, 0 backgrounds, 0 corrupt 100% ━━━━━━━━━━━━ 307307 977.1its 0.3s
+val New cache created threat-detection-project-1validlabels.cache
+WARNING ⚠️ cache='ram' may produce non-deterministic training results. Consider cache='disk' as a deterministic alternative if your disk space allows.
+val Caching images (0.4GB RAM) 100% ━━━━━━━━━━━━ 307307 397.0its 0.8s
+optimizer 'optimizer=auto' found, ignoring 'lr0=0.01' and 'momentum=0.937' and determining best 'optimizer', 'lr0' and 'momentum' automatically... 
+optimizer MuSGD(lr=0.01, momentum=0.9) with parameter groups 167 weight(decay=0.0), 174 weight(decay=0.0005), 173 bias(decay=0.0)
+Plotting labels to contentultralyticsrunsdetectthreat-detection-project_yolo11xthreat-detection-project-yolo11x_traininglabels.jpg... 
+Image sizes 640 train, 640 val
+Using 2 dataloader workers
+Logging results to contentultralyticsrunsdetectthreat-detection-project_yolo11xthreat-detection-project-yolo11x_training
+Starting training for 10 hours...
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       150      3.48G      1.465      1.896      1.757          5        640 100% ━━━━━━━━━━━━ 1092010920 3.1its 5824
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 4.9its 15.7s
+                   all        307        339      0.454       0.48       0.41      0.156
+  [Backup] Epoch 1 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch1.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 1 new best (fitness=0.1562) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+Closing dataloader mosaic
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       211      3.48G      1.659      1.826      1.981          1        640 100% ━━━━━━━━━━━━ 1092010920 4.3its 4218
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.347      0.487      0.294      0.119
+  [Backup] Epoch 2 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch2.pt
+Closing dataloader mosaic
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       312      3.48G      1.705      1.976      2.034          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4053
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.339      0.341      0.258      0.104
+  [Backup] Epoch 3 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch3.pt
+Closing dataloader mosaic
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       413      3.48G       1.66      1.887       2.01          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4010
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.5s
+                   all        307        339      0.392      0.444      0.334      0.147
+  [Backup] Epoch 4 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch4.pt
+Closing dataloader mosaic
+albumentations Blur(p=0.01, blur_limit=(3, 7)), MedianBlur(p=0.01, blur_limit=(3, 7)), ToGray(p=0.01, method='weighted_average', num_output_channels=3), CLAHE(p=0.01, clip_limit=(1.0, 4.0), tile_grid_size=(8, 8))
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       514      3.48G      1.533      1.598      1.885          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4006
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.5its 10.3s
+                   all        307        339      0.708      0.456      0.542       0.25
+  [Backup] Epoch 5 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch5.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 5 new best (fitness=0.2497) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       614      3.48G      1.443      1.404      1.799          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4025
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.5s
+                   all        307        339      0.604      0.522       0.53      0.256
+  [Backup] Epoch 6 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch6.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 6 new best (fitness=0.2558) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       714      3.48G      1.376      1.244      1.722          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4016
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.5its 10.3s
+                   all        307        339      0.708      0.561       0.62      0.303
+  [Backup] Epoch 7 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch7.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 7 new best (fitness=0.3032) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       814      3.48G      1.309      1.116      1.654          2        640 100% ━━━━━━━━━━━━ 1092010920 4.6its 3928
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.756      0.512      0.599      0.285
+  [Backup] Epoch 8 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch8.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+       914      3.48G      1.254      1.016      1.607          2        640 100% ━━━━━━━━━━━━ 1092010920 4.6its 3945
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.723      0.595      0.669      0.324
+  [Backup] Epoch 9 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch9.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 9 new best (fitness=0.3244) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1014      3.48G      1.205     0.9161      1.547          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4023
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.3s
+                   all        307        339      0.781      0.617      0.703      0.362
+  [Backup] Epoch 10 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch10.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 10 new best (fitness=0.3622) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1115      3.48G       1.16     0.8508      1.513          2        640 100% ━━━━━━━━━━━━ 1092010920 4.6its 3940
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.783       0.67      0.747      0.389
+  [Backup] Epoch 11 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch11.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 11 new best (fitness=0.3893) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1215      3.48G      1.117      0.773      1.474          2        640 100% ━━━━━━━━━━━━ 1092010920 4.6its 3939
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.748      0.692      0.757      0.394
+  [Backup] Epoch 12 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch12.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 12 new best (fitness=0.3938) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1315      3.48G      1.063     0.6939      1.424          2        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4028
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.786      0.686      0.765      0.411
+  [Backup] Epoch 13 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch13.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 13 new best (fitness=0.4109) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1415      3.48G      1.015     0.6364      1.386          3        640 100% ━━━━━━━━━━━━ 1092010920 4.5its 4029
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95) 100% ━━━━━━━━━━━━ 7777 7.4its 10.4s
+                   all        307        339      0.759      0.736      0.788      0.433
+  [Backup] Epoch 14 last.pt → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_epoch14.pt
+Optimizer stripped from contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt, 114.5MB
+  [Backup] Epoch 14 new best (fitness=0.4331) → contentdriveMyDriveYOLO_checkpointsthreat-detection-project-yolo11x_training_best.pt
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
+      1515      3.48G     0.9629     0.6031      1.358          2        640 4% ──────────── 45110920 8.1its 1442136
+---------------------------------------------------------------------------
+KeyboardInterrupt                         Traceback (most recent call last)
+tmpipykernel_23423648979278.py in cell line 0()
+     50     print(f✅ Checkpoint backup enabled ({_msg}) → {_bkp_dir})
+     51 
+--- 52 results = model.train(
+     53     data=data,
+     54     epochs=epochs,

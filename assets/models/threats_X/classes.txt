@@ -1,0 +1,3 @@
+knife
+object
+pistol
