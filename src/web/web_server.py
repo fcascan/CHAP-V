@@ -165,13 +165,14 @@ class WebServer:
             # Import fresh values to ensure we get the latest configuration
             from ..core.config import BENCHMARK_MODE, BENCHMARK_LOOP, INFERENCE_DEVICE, MODEL_PATH, ONNX_MODEL_PATH, MNN_MODEL_PATH, HAILO8_MODEL_PATH
             from ..core.config import VIDEO_FILE_PATH, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE
-            from ..core.config import MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, DEBUG_MODE
+            from ..core.config import MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, DEBUG_MODE, INFERENCE_TIMEOUT_MINUTES
 
             config_data = {
                 'benchmark_mode': BENCHMARK_MODE,
                 'benchmark_loop': BENCHMARK_LOOP,
                 'inference_device': INFERENCE_DEVICE,
                 'debug_mode': DEBUG_MODE,
+                'inference_timeout_minutes': INFERENCE_TIMEOUT_MINUTES,
                 # Models are folder-based: each model lives in assets/models/<name>/ with its
                 # per-format files. The dropdowns select the model FOLDER name, so report the
                 # parent-folder name of each configured file path.
@@ -256,7 +257,15 @@ class WebServer:
                     
                 if 'debug_mode' in data:
                     parser.set('INFERENCE', 'debug_mode', str(data['debug_mode']).lower())
-                
+
+                if 'inference_timeout_minutes' in data:
+                    # Hard-clamp to [0, 120] on write (0 = indefinite); defends against a bad client value.
+                    try:
+                        _timeout = max(0, min(120, int(data['inference_timeout_minutes'])))
+                    except (TypeError, ValueError):
+                        _timeout = 0
+                    parser.set('INFERENCE', 'inference_timeout_minutes', str(_timeout))
+
                 # Write updated config
                 with open(config_path, 'w') as configfile:
                     parser.write(configfile)
@@ -365,24 +374,10 @@ class WebServer:
         def get_cameras():
             """Get information about available cameras"""
             try:
-                infos = self.video_manager.get_cameras_info()
-                if infos:
-                    cameras = [{
-                        'id': info.get('number', idx),
-                        'name': f"Camera {info.get('number', idx)}",
-                        'label': info.get('label') or f"Camera {info.get('number', idx)}",
-                        'model': info.get('model', ''),
-                        'port': info.get('port', ''),
-                        'serial': info.get('serial', ''),
-                    } for idx, info in enumerate(infos)]
-                else:
-                    camera_count = self.video_manager.get_camera_count()
-                    cameras = [{'id': i, 'name': f'Camera {i}', 'label': f'Camera {i}',
-                                'model': '', 'port': '', 'serial': ''}
-                               for i in range(camera_count)]
+                camera_count = self.video_manager.get_camera_count()
                 return jsonify({
-                    'camera_count': len(cameras),
-                    'cameras': cameras
+                    'camera_count': camera_count,
+                    'cameras': [{'id': i, 'name': f'Camera {i}'} for i in range(camera_count)]
                 })
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
@@ -546,6 +541,7 @@ class WebServer:
             hs = get_hailo_stats()
             monitor_data['hailo'] = {
                 'load': hs['utilization'] if hs['utilization'] is not None else 0,
+                'latency_ms': hs.get('latency_ms'),
                 'temperature': hs['temperature'],
                 'power': hs.get('power'),
                 'fps': hs['fps'],

@@ -75,6 +75,7 @@ UI's *Configuration* panel (which writes them back to `config.ini`); the rest ar
 | `[MODE]` | `benchmark_mode` | `true` (video file) / `false` (camera) | ✅ |
 | `[INFERENCE]` | `inference_device` | `RKNPU-Auto` / `RKNPU-Distributed` / `CPU` / `CPU-50%` / `GPU-OpenCV-OpenCL` / `GPU-MNN` / `NPU-Hailo8` | ✅ |
 | | `max_inference_instances` | `1`–`3` parallel streams/cameras (RKNPU-Distributed pins stream N → RKNN core N) | ✅ |
+| | `inference_timeout_minutes` | auto-stop after N minutes (`0` = run indefinitely, max `120`) — for timing each model over an identical window | ✅ |
 | | `debug_mode` | `true` / `false` (verbose logging) | ✅ |
 | | `rockchip_target` | RKNPU platform, e.g. `rk3588` | — |
 | | `obj_threshold`, `nms_threshold` | `0.0`–`1.0` | — |
@@ -397,9 +398,19 @@ hailortcli fw-control identify                       # verify the Hailo-8 is det
 ```
 
 ### System Monitor
-The web System Monitor includes a **Hailo-8** card: utilization (a busy-fraction % — inference time ÷
-wall-time, since HailoRT 4.24 exposes no direct utilization counter) and chip temperature. Values
-populate while NPU-Hailo8 inference is running.
+The web System Monitor includes a **Hailo-8** card, populated while NPU-Hailo8 inference runs:
+
+- **Load** — a device-occupancy **busy-fraction %** (device inference time ÷ wall-time). HailoRT 4.24 exposes
+  no Python utilization counter (`query_performance_stats`/`nnc_utilization` are absent); the only official
+  figure is `hailortcli monitor`'s scheduler `Utilization %`, which tracks this busy-fraction. It reads well
+  below 100 % even with 3 streams: the single-process, GIL-bound host pipeline can't keep the Hailo's queue
+  full, so the accelerator is **host-bound, not compute-bound** (hence low power and FPS that fall with model
+  size). Treat this as a software occupancy proxy — it is not the same kind of number as the RKNPU/GPU sysfs loads.
+- **Latency** — mean device inference time per frame (ms); **FPS** — achieved throughput. These are the most
+  meaningful cross-mode comparison metrics here.
+- **Power** — real on-board **average** watts (whole module, via the M.2 overcurrent sensor), measured
+  continuously and averaged.
+- **Temp** — chip temperature (°C).
 
 ---
 

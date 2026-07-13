@@ -178,6 +178,9 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         # GPU/Hailo usage are present in every mode's CSV; tolerate older files that lack them.
         gpu_usage = data.get('gpu_usage_percent', [0.0] * len(data['frame_number']))
         hailo_usage = data.get('hailo_usage_percent', [0.0] * len(data['frame_number']))
+        hailo_infer_ms = data.get('hailo_infer_ms', [0.0] * len(data['frame_number']))
+        hailo_temp = data.get('hailo_temp_c', [0.0] * len(data['frame_number']))
+        hailo_power = data.get('hailo_power_w', [0.0] * len(data['frame_number']))
 
         # Calculate statistics
         inf_mean = mean(inference_times)
@@ -188,6 +191,14 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         cpu_mean = mean(cpu_usage)
         gpu_mean = mean(gpu_usage)
         hailo_mean = mean(hailo_usage) if hailo_usage else 0.0
+        # Mean device inference latency (ms) over frames that actually ran on the Hailo (infer_ms>0).
+        _hlat = [v for v in hailo_infer_ms if v and v > 0]
+        hailo_lat_mean = mean(_hlat) if _hlat else 0.0
+        # Mean chip temperature / power over frames with a sample (cached from the 500 ms monitor).
+        _htemp = [v for v in hailo_temp if v and v > 0]
+        _hpower = [v for v in hailo_power if v and v > 0]
+        hailo_temp_mean = mean(_htemp) if _htemp else 0.0
+        hailo_power_mean = mean(_hpower) if _hpower else 0.0
         
         # Draw title
         title = f"Performance Analysis Report"
@@ -552,7 +563,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         graph3_x = 720
 
         draw.rectangle([graph3_x, graph3_y, graph3_x + graph_width, graph3_y + graph3_height], outline='black', width=2)
-        draw.text((graph3_x, graph3_y - 25), "Hailo Usage (%)", fill='black', font=font_large)
+        draw.text((graph3_x, graph3_y - 25), "Hailo Occupancy (%)", fill='black', font=font_large)
 
         if len(hailo_usage) > 0:
             sampled_hailo = hailo_usage[::step][:sample_size]
@@ -602,7 +613,12 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
                 hailo_avg_y = graph3_y + graph3_height - int(hailo_mean * graph3_height / 100)
                 draw_dashed_line(draw, (graph3_x, hailo_avg_y), (graph3_x + graph_width, hailo_avg_y), fill='teal')
 
-        draw.text((graph3_x + 5, graph3_y + graph3_height + 30), f"Avg: {hailo_mean:.1f}%", fill='teal', font=font)
+        _hailo_avg_txt = f"Avg: {hailo_mean:.1f}%  |  {hailo_lat_mean:.1f} ms"
+        if hailo_temp_mean > 0:
+            _hailo_avg_txt += f"  |  {hailo_temp_mean:.1f}°C"
+        if hailo_power_mean > 0:
+            _hailo_avg_txt += f"  |  {hailo_power_mean:.2f} W"
+        draw.text((graph3_x + 5, graph3_y + graph3_height + 30), _hailo_avg_txt, fill='teal', font=font)
 
                 # Draw dashed average lines
                 # npu_avg_y = graph3_y + graph3_height - int(npu_mean * graph3_height / 100)
@@ -750,7 +766,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         draw.text((legend_x + 40, legend_y + 105), "GPU Usage (%)", fill='black', font=font)
 
         draw.line([legend_x, legend_y + 130, legend_x + 30, legend_y + 130], fill='teal', width=3)
-        draw.text((legend_x + 40, legend_y + 125), "Hailo Usage (%)", fill='black', font=font)
+        draw.text((legend_x + 40, legend_y + 125), "Hailo Occupancy (%)", fill='black', font=font)
 
         # Dashed lines (shifted down to make room for the Hailo Usage entry above)
         draw_dashed_line(draw, (legend_x, legend_y + 150), (legend_x + 30, legend_y + 150), fill='blue')

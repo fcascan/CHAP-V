@@ -23,7 +23,6 @@ class YOLOWebInterface {
         };
         this.maxDataPoints = 60; // 1 minute interval
         this.currentCameraCount = 1;
-        this._camerasSig = null;
         this.init();
     }
 
@@ -207,6 +206,7 @@ class YOLOWebInterface {
             const modelMnnSelect = document.getElementById('model-mnn-select');
             const modelHailo8Select = document.getElementById('model-hailo8-select');
             const maxInferenceInstances = document.getElementById('max-inference-instances');
+            const inferenceTimeout = document.getElementById('inference-timeout-minutes');
             const debugMode = document.getElementById('debug-mode');
 
             if (benchmarkMode) {
@@ -231,6 +231,9 @@ class YOLOWebInterface {
             selectModel(modelHailo8Select, config.model_hailo8);
             if (maxInferenceInstances && config.camera_config) {
                 maxInferenceInstances.value = config.camera_config.max_inference_instances;
+            }
+            if (inferenceTimeout && config.inference_timeout_minutes !== undefined) {
+                inferenceTimeout.value = config.inference_timeout_minutes;
             }
             if (debugMode && config.debug_mode !== undefined) {
                 debugMode.value = config.debug_mode.toString();
@@ -278,6 +281,7 @@ class YOLOWebInterface {
             const formData = new FormData(document.getElementById('config-form'));
             const rawInstances = parseInt(formData.get('max_inference_instances'));
             const clampedInstances = Math.min(3, Math.max(1, rawInstances || 1));
+            const clampedTimeout = Math.min(120, Math.max(0, parseInt(formData.get('inference_timeout_minutes')) || 0));
             const config = {
                 // raw dropdown value: 'false' | 'true' | 'loop' (server derives benchmark_mode + benchmark_loop)
                 benchmark_mode: formData.get('benchmark_mode'),
@@ -287,6 +291,7 @@ class YOLOWebInterface {
                 model_mnn: formData.get('model_mnn'),
                 model_hailo8: formData.get('model_hailo8'),
                 max_inference_instances: clampedInstances,
+                inference_timeout_minutes: clampedTimeout,
                 debug_mode: formData.get('debug_mode') === 'true',
             };
             
@@ -357,11 +362,6 @@ class YOLOWebInterface {
                 stopBtn.disabled = false;
                 if (saveConfigBtn) saveConfigBtn.disabled = true;
                 this.updateConnectionStatus('processing');
-                // In camera mode, refine the stream layout to the actually
-                // detected cameras so each shows its correct number + label.
-                if (status.current_mode === 'camera') {
-                    this.updateDetectedCameras();
-                }
             } else {
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
@@ -369,7 +369,6 @@ class YOLOWebInterface {
                 if (this.connectionStatus !== 'disconnected') {
                     this.updateConnectionStatus('connected');
                 }
-                this._camerasSig = null;
             }
             
         } catch (error) {
@@ -560,56 +559,6 @@ class YOLOWebInterface {
         }
     }
     
-    async updateDetectedCameras() {
-        try {
-            const response = await fetch('/api/cameras');
-            const data = await response.json();
-            const cams = data.cameras || [];
-            if (!cams.length) return;
-            const sig = JSON.stringify(cams.map(c => [c.id, c.label]));
-            if (sig === this._camerasSig) return;  // unchanged; don't reload streams
-            this._camerasSig = sig;
-            this.renderDetectedCameras(cams);
-        } catch (error) {
-            // transient error; keep the current view
-        }
-    }
-
-    renderDetectedCameras(cams) {
-        const singleView = document.getElementById('single-camera-view');
-        const multiView = document.getElementById('multi-camera-view');
-        singleView.style.display = 'none';
-        multiView.style.display = 'block';
-        multiView.innerHTML = '';
-        const count = cams.length;
-        multiView.className = 'multi-camera-container';
-        if (count === 2) multiView.classList.add('two-cameras');
-        else if (count === 3) multiView.classList.add('three-cameras');
-        else if (count === 4) multiView.classList.add('four-cameras');
-        else if (count > 4) multiView.classList.add('many-cameras');
-        cams.forEach((cam) => {
-            const cameraDiv = document.createElement('div');
-            cameraDiv.className = 'camera-container';
-
-            const cameraImg = document.createElement('img');
-            cameraImg.src = `/video_feed/${cam.id}`;
-            cameraImg.alt = `${cam.label} Stream`;
-            cameraImg.className = 'video-display';
-
-            const cameraLabel = document.createElement('div');
-            cameraLabel.className = 'camera-label';
-            cameraLabel.textContent = `Camera ${cam.id} \u2014 ${cam.label}`;
-
-            cameraDiv.appendChild(cameraImg);
-            cameraDiv.appendChild(cameraLabel);
-            multiView.appendChild(cameraDiv);
-
-            cameraImg.addEventListener('error', () => {
-                cameraImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjY2NjIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DYW1lcmEgVW5hdmFpbGFibGU8L3RleHQ+PC9zdmc+';
-            });
-        });
-    }
-
     updateCameraView(cameraCount) {
         const singleView = document.getElementById('single-camera-view');
         const multiView = document.getElementById('multi-camera-view');
@@ -1030,10 +979,13 @@ class YOLOWebInterface {
             document.getElementById('gpu-freq').textContent = '--';
         }
 
-        // Update Hailo-8 (busy-fraction utilization % + chip temperature + real on-board power W)
+        // Update Hailo-8 (device-occupancy busy-fraction % + device infer latency + chip temp +
+        // real on-board average power W, with min/max on hover)
         if (data.hailo && !data.hailo.error && data.hailo.available) {
             const hailoLoad = (data.hailo.load || 0).toFixed(1);
             this.updateValueWithColor('hailo-load', `${hailoLoad}%`, data.hailo.load || 0);
+            const latEl = document.getElementById('hailo-latency');
+            if (latEl) latEl.textContent = (data.hailo.latency_ms != null) ? `${data.hailo.latency_ms} ms` : '--';
             document.getElementById('hailo-temp').textContent =
                 (data.hailo.temperature != null) ? `${data.hailo.temperature}°C` : '--';
             document.getElementById('hailo-power').textContent =
@@ -1041,6 +993,8 @@ class YOLOWebInterface {
             this.updateChart('hailo', data.hailo.load || 0);
         } else {
             document.getElementById('hailo-load').textContent = 'N/A';
+            const latEl = document.getElementById('hailo-latency');
+            if (latEl) latEl.textContent = '--';
             document.getElementById('hailo-temp').textContent = '--';
             document.getElementById('hailo-power').textContent = '--';
         }

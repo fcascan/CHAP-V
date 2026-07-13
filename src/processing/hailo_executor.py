@@ -43,6 +43,7 @@ import os
 import time
 import logging
 import threading
+from collections import deque
 
 import numpy as np
 
@@ -57,65 +58,137 @@ except Exception as _e:  # pragma: no cover - import guard (pyhailort may be abs
     hp = None
     _HAILO_IMPORT_ERROR = _e
 
+# Power-measurement enums (for the continuous averaged measurement). Guarded — location varies by
+# build; absent entirely on boards without an INA231 sensor (power then reports None).
+try:
+    from hailo_platform import (DvmTypes, PowerMeasurementTypes, AveragingFactor,
+                                SamplingPeriod, MeasurementBufferIndex)
+except Exception:
+    try:
+        from hailo_platform.pyhailort.pyhailort import (DvmTypes, PowerMeasurementTypes,
+            AveragingFactor, SamplingPeriod, MeasurementBufferIndex)
+    except Exception:
+        DvmTypes = PowerMeasurementTypes = AveragingFactor = SamplingPeriod = MeasurementBufferIndex = None
+
 
 # One shared VDevice for the whole process, with the round-robin scheduler enabled
 # so multiple containers (camera streams) time-share the single Hailo-8 fairly.
 _VDEVICE = None
 _VDEVICE_LOCK = threading.Lock()
 
-# ---- Live utilization stats for the web System Monitor ----------------------
-# pyhailort 4.24 has no direct utilization API, so we report a busy-fraction:
-# inference wall-time accumulated across all streams divided by elapsed time.
-# Temperature is read from the shared VDevice's physical device.
+# ---- Live device stats for the web System Monitor + performance report ------
+# HailoRT 4.24 exposes NO Python device-utilization API (no query_performance_stats /
+# nnc_utilization; verified against the pyhailort binary). So "Load" is a DEVICE-OCCUPANCY
+# busy-fraction: the sum of device inference wall-time over a trailing ~1 s window / that window
+# (0-100%). It is computed from ONE rolling event log fed by every stream's run(), and the SAME
+# hailo_device_occupancy() value is (a) shown live on the monitor AND (b) recorded per-frame into
+# each stream's CSV -> the live card and the report AGREE, and it is a DEVICE-LEVEL figure (like the
+# RKNPU/GPU sysfs loads), independent of stream count. (The earlier per-stream detect/frame ratio in
+# the report read ~1/N of the live device value — N streams each ~19% vs the ~55% aggregate.)
+# It reads well below 100% because the single-process, GIL-bound host pipeline can't keep the Hailo's
+# queue full: the accelerator is HOST-BOUND, not compute-bound (measured ~1.3 W, ~102 fps nano) ->
+# the low power + headroom are REAL, not a measurement error.
+#
+# Temperature + power are single-shot control reads off the shared VDevice's physical device, taken
+# ONLY at the ~500 ms monitor cadence (NEVER per-frame — PCIe control round-trips contend with
+# inference and tank FPS). Power is throttled to >= ~3 s between reads and cached, to limit the
+# "overcurrent protection" warning HailoRT prints on each overcurrent-DVM measurement.
+# (A CONTINUOUS averaged measurement was tried but set/start_power_measurement reconfigures the
+# sensor into a mode where get_chip_temperature() ALSO fails -> temp and power both went blank;
+# the single-shot read auto-restores protection, so temperature stays readable.)
 _STATS_LOCK = threading.Lock()
-_busy_seconds = 0.0
-_infer_count = 0
-_last_sample_t = None
+_OCC_WINDOW = 1.0                       # trailing window (s) for occupancy / fps / latency
+_infer_events = deque()                 # (end_time, duration_s) of recent device inferences (all streams)
+_last_temp = None
+_last_power = None
+_last_power_t = 0.0
+_POWER_MIN_INTERVAL = 3.0               # min seconds between single-shot power reads (caps the warning)
 
 
-def _add_busy(seconds):
-    global _busy_seconds, _infer_count
+def _record_infer(dt):
+    """Log one device inference (called by every stream's run())."""
+    now = time.time()
     with _STATS_LOCK:
-        _busy_seconds += float(seconds)
-        _infer_count += 1
+        _infer_events.append((now, float(dt)))
+        cutoff = now - _OCC_WINDOW
+        while _infer_events and _infer_events[0][0] < cutoff:
+            _infer_events.popleft()
+
+
+def _device_stats(now=None):
+    """(occupancy%, fps, latency_ms) over the trailing window across ALL streams; (0,0,None) idle."""
+    if now is None:
+        now = time.time()
+    cutoff = now - _OCC_WINDOW
+    with _STATS_LOCK:
+        while _infer_events and _infer_events[0][0] < cutoff:
+            _infer_events.popleft()
+        evts = list(_infer_events)
+    if not evts:
+        return 0.0, 0.0, None
+    busy = sum(d for _, d in evts)
+    occ = min(100.0, busy / _OCC_WINDOW * 100.0)
+    fps = len(evts) / _OCC_WINDOW
+    latency_ms = busy / len(evts) * 1000.0
+    return occ, fps, latency_ms
+
+
+def hailo_device_occupancy():
+    """Current DEVICE occupancy % over the trailing window (cheap; NO device I/O). Recorded per-frame
+    by the stream workers so the report matches the live monitor. 0.0 when idle."""
+    return _device_stats()[0]
+
+
+def hailo_env():
+    """Last (temperature_C, power_W) the monitor sampled (cached; NO device I/O). (None, None) until
+    the first sample. Recorded per-frame by the workers so the report can show avg temp/power."""
+    return _last_temp, _last_power
 
 
 def get_hailo_stats():
-    """Stats for the System Monitor: {'utilization': %|None, 'temperature': degC|None, 'power': W|None, 'fps': float}.
-    utilization = Hailo inference busy-time / wall-time since the previous call (capped at 100; an
-    approximation since concurrent streams overlap). None until first sample / when idle. Safe to
-    call when the Hailo is idle or absent."""
-    global _busy_seconds, _infer_count, _last_sample_t
+    """Stats for the System Monitor:
+      {'utilization': %|None, 'latency_ms': ms|None, 'temperature': degC|None, 'power': W|None, 'fps': float}.
+    utilization = device-occupancy busy-fraction (HOST-BOUND -> well below 100). Sampled at ~500 ms;
+    NEVER per-frame (temp/power are PCIe control reads). None for util when idle."""
+    global _last_temp, _last_power, _last_power_t
     now = time.time()
-    with _STATS_LOCK:
-        busy, cnt, last = _busy_seconds, _infer_count, _last_sample_t
-        _busy_seconds = 0.0
-        _infer_count = 0
-        _last_sample_t = now
-    util, fps = None, 0.0
-    if last is not None:
-        elapsed = max(1e-6, now - last)
-        util = min(100.0, (busy / elapsed) * 100.0)
-        fps = cnt / elapsed
-    temp = None
-    power = None
-    try:
-        if _VDEVICE is not None:
+    occ, fps, latency_ms = _device_stats(now)
+    util = occ if fps > 0 else None
+    temp = power = None
+    # Read temp/power INLINE, holding the physical Device in LOCAL scope ONLY for the duration of the
+    # reads, then releasing it (del). This is critical:
+    #  * The Device MUST stay referenced WHILE its .control is used, or HailoRT raises "The device in
+    #    use has been released" (that blanked temp/power when a helper returned phys[0].control and let
+    #    `phys` go out of scope).
+    #  * But the Device must NOT be CACHED/held across calls: keeping the physical-device handle open
+    #    blocks the inference output (D2H) vstreams -> HAILO_TIMEOUT and inference dies. So we acquire
+    #    it fresh each ~500 ms sample and release it immediately (the original working pattern).
+    if _VDEVICE is not None:
+        try:
             phys = _VDEVICE.get_physical_devices()
             if phys:
-                _ctrl = phys[0].control
-                temp = round(float(_ctrl.get_chip_temperature().ts0_temperature), 1)
-                # Real on-board power sensor (W). Use SINGLE-shot reads: they auto-restore the
-                # over-current protection, unlike continuous measurement. ~0.9 W idle on the M.2.
+                ctrl = phys[0].control
                 try:
-                    power = round(float(_ctrl.power_measurement()), 2)
+                    temp = round(float(ctrl.get_chip_temperature().ts0_temperature), 1)
+                    _last_temp = temp
                 except Exception:
-                    power = None
-    except Exception:
-        temp = None
-    # NOTE: this is sampled by the web System Monitor at low cadence (~500 ms). Never call it
-    # per-frame: temp/power are PCIe control round-trips that contend with inference (FPS drop).
-    return {'utilization': util, 'temperature': temp, 'power': power, 'fps': round(fps, 1)}
+                    temp = _last_temp
+                # Single-shot power (whole-module W via AUTO/overcurrent DVM), throttled + cached.
+                # ~1 W is REAL (host-bound). Each read warns once + auto-restores overcurrent protection.
+                if now - _last_power_t >= _POWER_MIN_INTERVAL:
+                    try:
+                        _last_power = round(float(ctrl.power_measurement()), 2)
+                    except Exception:
+                        _last_power = None
+                    _last_power_t = now
+                power = _last_power
+                del ctrl, phys   # release the physical-device handle immediately (do NOT hold it)
+        except Exception:
+            pass
+    return {'utilization': util,
+            'latency_ms': round(latency_ms, 2) if latency_ms is not None else None,
+            'temperature': temp, 'power': power,
+            'fps': round(fps, 1)}
 
 
 def _get_vdevice():
@@ -186,6 +259,7 @@ class Hailo_model_container:
             self.network_group, self.input_vstreams_params, self.output_vstreams_params)
         self._pipe = self._pipe_cm.__enter__()
 
+        self.last_infer_s = 0.0   # device infer time of the most recent run() (per-frame latency)
         logging.info("[Hailo] configured %s | inputs=%s outputs=%d",
                      os.path.basename(self.model_path), self.input_name, len(self.output_names))
 
@@ -197,7 +271,9 @@ class Hailo_model_container:
 
         t0 = time.time()
         results = self._pipe.infer({self.input_name: data})
-        _add_busy(time.time() - t0)
+        dt = time.time() - t0
+        self.last_infer_s = dt
+        _record_infer(dt)
 
         # Hailo returns a dict {name: ndarray} (NHWC). Transpose each to NCHW for
         # post_process, then re-group to [box, cls, sum] per scale.
@@ -210,8 +286,7 @@ class Hailo_model_container:
         return _regroup_rockchip_outputs(outs)
 
     def release(self):
-        # Close the infer pipeline; keep the shared VDevice alive for other streams /
-        # process lifetime.
+        # Close the infer pipeline; keep the shared VDevice alive for other streams / process lifetime.
         try:
             if getattr(self, "_pipe_cm", None) is not None:
                 self._pipe_cm.__exit__(None, None, None)

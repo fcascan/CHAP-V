@@ -59,7 +59,7 @@ def load_config(is_reload=False):
     global parser, BENCHMARK_MODE, BENCHMARK_LOOP, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
     global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
-    global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME
+    global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME, INFERENCE_TIMEOUT_MINUTES
     global MNN_MODEL_PATH, MNN_PRECISION, MNN_BACKEND, HAILO8_MODEL_PATH
 
     # Clear and re-read the config file
@@ -131,6 +131,10 @@ def load_config(is_reload=False):
     # RKNPU-DISTRIBUTED = instance N -> RKNN core N), not a separate setting. Derive it here for the
     # multi-core distribution logic in the web video/camera workers.
     NPU_CORE_ASSIGNMENT = "distributed" if INFERENCE_DEVICE == "RKNPU-DISTRIBUTED" else "auto"
+
+    # Inference timeout (minutes): auto-stop after N minutes exactly like the Stop button (for timed
+    # model comparisons). 0 = run indefinitely. Clamped to [0, 120] as a hard safety cap.
+    INFERENCE_TIMEOUT_MINUTES = max(0, min(120, parser.getint("INFERENCE", "inference_timeout_minutes", fallback=0)))
 
     # ---- CPU-50% mode (inference_device = CPU-50%) ----
     # Like CPU mode, but capped so it does NOT saturate all 8 cores — the device stays usable.
@@ -235,6 +239,7 @@ def load_config(is_reload=False):
         f"  max_detections_per_frame = {MAX_DETECTIONS_PER_FRAME}\n"
         f"  debug = {debug_status}\n"
         f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}\n"
+        f"  inference_timeout_minutes = {INFERENCE_TIMEOUT_MINUTES}\n"
         f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}\n"
         f"  cpu50_threads = {CPU50_THREADS}\n"
         f"  cpu50_affinity = {CPU50_AFFINITY}\n"

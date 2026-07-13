@@ -108,11 +108,21 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             cpu_pct, npu_loads, gpu_pct = _read_system_stats()
         except Exception:
             cpu_pct, npu_loads, gpu_pct = 0.0, [0, 0, 0], 0
-        # Hailo has no sysfs load counter; approximate its per-frame load as the inference duty
-        # cycle (detect time / frame time), only when this engine runs on the Hailo. No device I/O.
+        # Hailo metrics per frame (no device I/O): hailo_infer_ms = this stream's last device infer
+        # latency; hailo_usage_percent = the DEVICE occupancy over a trailing ~1 s window across ALL
+        # streams — the SAME value the live monitor shows, so the report avg matches the live card
+        # (device-level, comparable to the RKNPU/GPU sysfs loads; independent of stream count).
         hailo_pct = 0.0
-        if getattr(engine, 'platform', None) == 'hailo' and total_frame_ms > 0:
-            hailo_pct = min(100.0, (inf_time * 1000.0 / total_frame_ms) * 100.0)
+        hailo_infer_ms = 0.0
+        hailo_temp_c = 0.0
+        hailo_power_w = 0.0
+        if getattr(engine, 'platform', None) == 'hailo':
+            from ..processing.hailo_executor import hailo_device_occupancy, hailo_env
+            hailo_infer_ms = float(getattr(getattr(engine, 'model', None), 'last_infer_s', 0.0) or 0.0) * 1000.0
+            hailo_pct = hailo_device_occupancy()
+            _t, _p = hailo_env()   # cached temp/power (monitor-sampled); no per-frame device I/O
+            hailo_temp_c = round(_t, 1) if _t is not None else 0.0
+            hailo_power_w = round(_p, 2) if _p is not None else 0.0
         csv_rows.append({
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S") + f".{int((now % 1) * 1000):03d}",
             'frame_number': total_frames + 1,
@@ -124,6 +134,9 @@ def _stream_worker(idx, cap, engine, video_manager, processing_active_fn, output
             'npu_core2_percent': npu_loads[2] if len(npu_loads) > 2 else 0,
             'gpu_usage_percent': gpu_pct,
             'hailo_usage_percent': round(hailo_pct, 1),
+            'hailo_infer_ms': round(hailo_infer_ms, 2),
+            'hailo_temp_c': hailo_temp_c,
+            'hailo_power_w': hailo_power_w,
             'fps_actual': round(fps, 2),
             'detections_count': len(boxes) if boxes is not None else 0,
         })
@@ -164,6 +177,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
     VIDEO_FILE_PATHS = _cfg.VIDEO_FILE_PATHS
     MAX_INFERENCE_INSTANCES = _cfg.MAX_INFERENCE_INSTANCES
     BENCHMARK_LOOP = _cfg.BENCHMARK_LOOP
+    INFERENCE_TIMEOUT_MINUTES = _cfg.INFERENCE_TIMEOUT_MINUTES
 
     video_manager = get_video_stream_manager()
     logger = get_web_logger()
@@ -256,6 +270,7 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
 
     for t in threads:
         t.start()
+    run_start = time.time()
 
     if web_server is None:
         try:
@@ -272,6 +287,19 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         finally:
             cv2.destroyAllWindows()
         stop_event.set()
+
+    # Web mode: enforce the configured inference timeout (0 = indefinite). On expiry, flip the SAME
+    # flag the Stop button uses so every worker exits its loop normally and finalizes its CSV/report.
+    timeout_s = INFERENCE_TIMEOUT_MINUTES * 60 if (web_server is not None and INFERENCE_TIMEOUT_MINUTES > 0) else 0
+    if timeout_s:
+        logger.info(f"Inference timeout armed: {INFERENCE_TIMEOUT_MINUTES} min")
+        while any(t.is_alive() for t in threads):
+            if time.time() - run_start >= timeout_s:
+                logger.info(f"Inference timeout reached ({INFERENCE_TIMEOUT_MINUTES} min) — stopping processing")
+                web_server.processing_active = False
+                break
+            for t in threads:
+                t.join(timeout=0.5)
 
     for t in threads:
         t.join()
