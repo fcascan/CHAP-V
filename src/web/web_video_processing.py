@@ -275,13 +275,23 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         t.start()
     run_start = time.time()
 
+    timeout_s = INFERENCE_TIMEOUT_MINUTES * 60 if INFERENCE_TIMEOUT_MINUTES > 0 else 0
+    if timeout_s:
+        logger.info(f"Inference timeout armed: {INFERENCE_TIMEOUT_MINUTES} min")
+
     if web_server is None:
         try:
             while any(t.is_alive() for t in threads):
+                if timeout_s and (time.time() - run_start >= timeout_s):
+                    logger.info(f"Inference timeout reached ({INFERENCE_TIMEOUT_MINUTES} min) - stopping processing")
+                    stop_event.set()
+                    break
+                    
                 for idx in range(len(caps)):
                     frame = video_manager.get_latest_frame(camera_id=idx)
                     if frame is not None:
-                        cv2.imshow(f"Stream {idx}", frame)
+                        if not __import__('os').environ.get("CHAPV_HEADLESS"):
+                            cv2.imshow(f"Stream {idx}", frame)
                 if cv2.waitKey(30) & 0xFF == ord('q'):
                     stop_event.set()
                     break
@@ -290,19 +300,15 @@ def process_video_web(yolo_postprocess_func=None, web_server=None):
         finally:
             cv2.destroyAllWindows()
         stop_event.set()
-
-    # Web mode: enforce the configured inference timeout (0 = indefinite). On expiry, flip the SAME
-    # flag the Stop button uses so every worker exits its loop normally and finalizes its CSV/report.
-    timeout_s = INFERENCE_TIMEOUT_MINUTES * 60 if (web_server is not None and INFERENCE_TIMEOUT_MINUTES > 0) else 0
-    if timeout_s:
-        logger.info(f"Inference timeout armed: {INFERENCE_TIMEOUT_MINUTES} min")
-        while any(t.is_alive() for t in threads):
-            if time.time() - run_start >= timeout_s:
-                logger.info(f"Inference timeout reached ({INFERENCE_TIMEOUT_MINUTES} min) — stopping processing")
-                web_server.processing_active = False
-                break
-            for t in threads:
-                t.join(timeout=0.5)
+    else:
+        if timeout_s:
+            while any(t.is_alive() for t in threads):
+                if time.time() - run_start >= timeout_s:
+                    logger.info(f"Inference timeout reached ({INFERENCE_TIMEOUT_MINUTES} min) - stopping processing")
+                    web_server.processing_active = False
+                    break
+                for t in threads:
+                    t.join(timeout=0.5)
 
     for t in threads:
         t.join()
