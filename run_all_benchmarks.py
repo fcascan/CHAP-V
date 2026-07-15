@@ -46,6 +46,12 @@ def update_config(config_path, params, logger):
             config['INFERENCE']['max_inference_instances'] = str(params['instances'])
         if params['timeout'] is not None:
             config['INFERENCE']['inference_timeout_minutes'] = str(params['timeout'])
+        if params['ignore_frames'] is not None:
+            config['INFERENCE']['ignore_initial_frames'] = str(params['ignore_frames'])
+        if params['ignore_final_frames'] is not None:
+            config['INFERENCE']['ignore_final_frames'] = str(params['ignore_final_frames'])
+        if params['graph_method'] is not None:
+            config['INFERENCE']['graph_downsample_method'] = params['graph_method']
             
         # Update MODE params
         if 'MODE' not in config:
@@ -125,7 +131,13 @@ Examples:
                         help="Number of parallel inference streams (max_inference_instances).")
                         
     parser.add_argument('--timeout', type=int, default=None,
-                        help="Timeout in minutes (inference_timeout_minutes) to automatically stop each test.")
+                        help='Inference timeout in minutes')
+    parser.add_argument('--ignore_frames', type=int, default=None,
+                        help='Number of initial frames to ignore in analysis')
+    parser.add_argument('--ignore_final_frames', type=int, default=None,
+                        help='Number of final frames to ignore in analysis')
+    parser.add_argument('--graph_method', type=str, choices=['worst_case', 'mean'], default=None,
+                        help='Graph downsampling method (worst_case or mean)')
     
     args = parser.parse_args()
     
@@ -162,7 +174,10 @@ Examples:
                 'benchmark_mode': args.benchmark_mode if args.benchmark_mode is not None else True,
                 'benchmark_loop': args.benchmark_loop if args.benchmark_loop is not None else True,
                 'instances': args.instances,
-                'timeout': args.timeout
+                'timeout': args.timeout,
+                'ignore_frames': args.ignore_frames,
+                'ignore_final_frames': args.ignore_final_frames,
+                'graph_method': args.graph_method
             }
             
             if not update_config(config_path, params, logger):

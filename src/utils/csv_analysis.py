@@ -127,6 +127,16 @@ def analyze_csv_performance_data(csv_filepath):
                         except ValueError:
                             data[col].append(0.0)
 
+        from src.core.config import IGNORE_INITIAL_FRAMES, IGNORE_FINAL_FRAMES
+        if IGNORE_INITIAL_FRAMES > 0 or IGNORE_FINAL_FRAMES > 0:
+            total_captured = len(data['inference_time_ms'])
+            if (IGNORE_INITIAL_FRAMES + IGNORE_FINAL_FRAMES) >= total_captured:
+                print(f"[Warning] ignore_initial_frames ({IGNORE_INITIAL_FRAMES}) + ignore_final_frames ({IGNORE_FINAL_FRAMES}) is >= total captured frames ({total_captured}). Aborting analysis.")
+                return None
+            end_idx = total_captured - IGNORE_FINAL_FRAMES if IGNORE_FINAL_FRAMES > 0 else total_captured
+            for col in data:
+                data[col] = data[col][IGNORE_INITIAL_FRAMES:end_idx]
+
         if not data or not data['inference_time_ms']:
             print("No valid data found in CSV file")
             return None

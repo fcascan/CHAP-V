@@ -111,6 +111,28 @@ def _draw_time_axis(draw, gx, gw, y_bottom, duration_s, ticks, font):
         draw.line([x, y_bottom, x, y_bottom + 5], fill='black', width=1)
         draw.text((x - 12, y_bottom + 8), label, fill='gray', font=font)
 
+
+def downsample(data, sample_size, method='max'):
+    if not data:
+        return []
+    if len(data) <= sample_size:
+        return data
+    step = len(data) / sample_size
+    sampled = []
+    for i in range(sample_size):
+        start = int(i * step)
+        end = int((i + 1) * step)
+        window = data[start:end]
+        if not window:
+            continue
+        if method == 'max':
+            sampled.append(max(window))
+        elif method == 'min':
+            sampled.append(min(window))
+        elif method == 'mean':
+            sampled.append(sum(window) / len(window))
+    return sampled
+
 def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
                                 benchmark_video=None, camera_index=None, inference_device=None):
     """
@@ -184,6 +206,16 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
                             data[header].append(float(row[header]) if row[header] else 0.0)
                     except ValueError:
                         data[header].append(0.0)
+
+        from src.core.config import IGNORE_INITIAL_FRAMES, IGNORE_FINAL_FRAMES, GRAPH_DOWNSAMPLE_METHOD
+        if (IGNORE_INITIAL_FRAMES > 0 or IGNORE_FINAL_FRAMES > 0) and 'frame_number' in data:
+            total_captured = len(data['frame_number'])
+            if (IGNORE_INITIAL_FRAMES + IGNORE_FINAL_FRAMES) >= total_captured:
+                print(f"[Warning] ignore_initial_frames ({IGNORE_INITIAL_FRAMES}) + ignore_final_frames ({IGNORE_FINAL_FRAMES}) is >= total frames ({total_captured}). Aborting graph generation.")
+                return None
+            end_idx = total_captured - IGNORE_FINAL_FRAMES if IGNORE_FINAL_FRAMES > 0 else total_captured
+            for col in data:
+                data[col] = data[col][IGNORE_INITIAL_FRAMES:end_idx]
         
         # Sanity check: required columns must be present
         required_cols = ['inference_time_ms', 'fps_actual', 'npu_core0_percent', 'cpu_usage_percent', 'frame_number']
@@ -244,6 +276,11 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         hailo_temp_mean = mean(_htemp) if _htemp else 0.0
         hailo_power_mean = mean(_hpower) if _hpower else 0.0
         
+
+        from src.core.config import GRAPH_DOWNSAMPLE_METHOD
+        method_max = 'mean' if GRAPH_DOWNSAMPLE_METHOD == 'mean' else 'max'
+        method_min = 'mean' if GRAPH_DOWNSAMPLE_METHOD == 'mean' else 'min'
+        
         # Draw title
         title = f"Performance Analysis Report"
         subtitle = f"Source: {os.path.basename(csv_filepath)}"
@@ -272,6 +309,16 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         _model_display = model_name or (os.path.basename(metadata['model_path']) if 'model_path' in metadata else None)
         if _model_display:
             draw.text((20, y_meta), f"Model: {_model_display}", fill='black', font=font)
+            y_meta += 18
+        
+        from src.core.config import IGNORE_INITIAL_FRAMES, IGNORE_FINAL_FRAMES, GRAPH_DOWNSAMPLE_METHOD
+        ignored_text = []
+        if IGNORE_INITIAL_FRAMES > 0:
+            ignored_text.append(f"Initial: {IGNORE_INITIAL_FRAMES}")
+        if IGNORE_FINAL_FRAMES > 0:
+            ignored_text.append(f"Final: {IGNORE_FINAL_FRAMES}")
+        if ignored_text:
+            draw.text((20, y_meta), f"Ignored frames: {', '.join(ignored_text)}", fill='black', font=font)
             y_meta += 18
 
         # Statistics summary
@@ -324,7 +371,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
             # Sample data points if too many
             sample_size = min(300, len(inference_times))
             step = len(inference_times) // sample_size if sample_size > 0 else 1
-            sampled_data = inference_times[::step][:sample_size]
+            sampled_data = downsample(inference_times, sample_size, method=method_max)
             
             # Draw grid lines with time intervals
             for i in range(5):
@@ -410,7 +457,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
             fps_upper_bound = max_fps + 10
             fps_range = fps_upper_bound - fps_lower_bound if fps_upper_bound != fps_lower_bound else 1
             
-            sampled_fps = fps_data[::step][:sample_size]
+            sampled_fps = downsample(fps_data, sample_size, method='mean')
             
             # Draw grid lines
             for i in range(5):
@@ -450,7 +497,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         draw.text((graph4_x, graph4_y - 25), _npu_title, fill='black', font=font_large)
         
         if len(npu_core0) > 0:
-            sampled_npu = npu_core0[::step][:sample_size]
+            sampled_npu = downsample(npu_core0, sample_size, method='mean')
             
             # Draw grid lines
             for i in range(5):
@@ -484,7 +531,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         draw.text((graph5_x, graph5_y - 25), "CPU Usage (%)", fill='black', font=font_large)
         
         if len(cpu_usage) > 0:
-            sampled_cpu = cpu_usage[::step][:sample_size]
+            sampled_cpu = downsample(cpu_usage, sample_size, method='mean')
             
             # Draw grid lines
             for i in range(5):
@@ -523,7 +570,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         draw.text((graph3_x, graph3_y - 25), "Hailo Occupancy (%)", fill='black', font=font_large)
 
         if len(hailo_usage) > 0:
-            sampled_hailo = hailo_usage[::step][:sample_size]
+            sampled_hailo = downsample(hailo_usage, sample_size, method='mean')
 
             # Draw grid lines
             for i in range(5):
@@ -573,7 +620,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         draw.text((graph6_x, graph6_y - 25), "GPU Usage (%)", fill='black', font=font_large)
 
         if len(gpu_usage) > 0:
-            sampled_gpu = gpu_usage[::step][:sample_size]
+            sampled_gpu = downsample(gpu_usage, sample_size, method='mean')
 
             # Grid lines
             for i in range(5):
@@ -619,7 +666,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
 
             # Overlay one line per backend (0% when a backend is not the active one).
             for _series, _color in ((cpu_usage, 'purple'), (npu_core0, 'orange'), (gpu_usage, 'red'), (hailo_usage, 'teal')):
-                _samp = _series[::step][:sample_size]
+                _samp = downsample(_series, sample_size, method='mean')
                 if len(_samp) < 2:
                     continue
                 for i in range(len(_samp) - 1):

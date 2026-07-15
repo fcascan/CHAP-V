@@ -61,7 +61,7 @@ def load_config(is_reload=False):
     global parser, BENCHMARK_MODE, BENCHMARK_LOOP, INFERENCE_DEVICE, ROCKCHIP_TARGET, OBJ_THRESHOLD, NMS_THRESHOLD, DEBUG_MODE
     global MODEL_PATH, ONNX_MODEL_PATH, VIDEO_FILE_PATH, VIDEO_FILE_PATHS, IMG_SIZE, FPS_TEXT_SIZE, LABEL_TEXT_SIZE, OVERLAY_ENABLED, OVERLAY_TEXT_COLOR, SAVE_DEBUG_FRAMES, MAX_INFERENCE_INSTANCES, NPU_CORE_ASSIGNMENT, CLASSES, MODEL_LABELS_FILE_PATH
     global DETECTION_BOX_COLOR, DETECTION_LABEL_COLOR, DETECTION_LABEL_BACKGROUND_COLOR, DETECTION_BOX_THICKNESS, DETECTION_LABEL_TEXT_SIZE, DETECTION_LABEL_TEXT_THICKNESS
-    global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME, INFERENCE_TIMEOUT_MINUTES
+    global CPU50_THREADS, CPU50_AFFINITY, MAX_DETECTIONS_PER_FRAME, INFERENCE_TIMEOUT_MINUTES, IGNORE_INITIAL_FRAMES, IGNORE_FINAL_FRAMES, GRAPH_DOWNSAMPLE_METHOD
     global MNN_MODEL_PATH, MNN_PRECISION, MNN_BACKEND, HAILO8_MODEL_PATH
 
     # Clear and re-read the config file
@@ -137,6 +137,13 @@ def load_config(is_reload=False):
     # Inference timeout (minutes): auto-stop after N minutes exactly like the Stop button (for timed
     # model comparisons). 0 = run indefinitely. Clamped to [0, 120] as a hard safety cap.
     INFERENCE_TIMEOUT_MINUTES = max(0, min(120, parser.getint("INFERENCE", "inference_timeout_minutes", fallback=0)))
+
+    # Number of initial frames to ignore during performance analysis
+    IGNORE_INITIAL_FRAMES = max(0, parser.getint("INFERENCE", "ignore_initial_frames", fallback=0))
+    # Number of final frames to ignore during performance analysis
+    IGNORE_FINAL_FRAMES = max(0, parser.getint("INFERENCE", "ignore_final_frames", fallback=0))
+    # Graph downsample method: worst_case (show spikes) or mean (show average)
+    GRAPH_DOWNSAMPLE_METHOD = parser.get("INFERENCE", "graph_downsample_method", fallback="worst_case").strip().lower()
 
     # ---- CPU-50% mode (inference_device = CPU-50%) ----
     # Like CPU mode, but capped so it does NOT saturate all 8 cores — the device stays usable.
@@ -242,6 +249,9 @@ def load_config(is_reload=False):
         f"  debug = {debug_status}\n"
         f"  max_inference_instances = {MAX_INFERENCE_INSTANCES}\n"
         f"  inference_timeout_minutes = {INFERENCE_TIMEOUT_MINUTES}\n"
+        f"  ignore_initial_frames = {IGNORE_INITIAL_FRAMES}\n"
+        f"  ignore_final_frames = {IGNORE_FINAL_FRAMES}\n"
+        f"  graph_downsample_method = {GRAPH_DOWNSAMPLE_METHOD}\n"
         f"  npu_core_assignment = {NPU_CORE_ASSIGNMENT!r}\n"
         f"  cpu50_threads = {CPU50_THREADS}\n"
         f"  cpu50_affinity = {CPU50_AFFINITY}\n"

@@ -75,6 +75,7 @@ Then open your browser to: **http://your-device-ip:8080**
 - **Console Output**: All terminal messages displayed in web interface
 - **Configuration Panel**: Change inference device, mode, and camera settings
 - **Control Buttons**: Start/stop processing remotely
+- **Results Download**: Download the CSV log, PNG graph, and TXT summary of the latest execution directly from the UI
 - **System Information**: Real-time status and performance metrics
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 
@@ -96,6 +97,8 @@ UI's *Configuration* panel (which writes them back to `config.ini`); the rest ar
 | | `max_detections_per_frame` | int; `0` disables the corrupt-frame guard | — |
 | | `cpu50_threads`, `cpu50_affinity` | int · CSV core ids — **CPU-50%** mode | — |
 | | `mnn_precision`, `mnn_backend` | `low`/`high`/`normal` · `OPENCL`/`CPU` — **GPU-MNN** mode | — |
+| | `ignore_initial_frames`, `ignore_final_frames` | int; number of frames to ignore in analysis | — |
+| | `graph_downsample_method` | `worst_case` / `mean` (downsampling strategy for graphs) | — |
 | `[PATHS]` | `model_rknn` | `.rknn` path — used by **RKNPU** | ✅ |
 | | `model_onnx` | `.onnx` path — used by **CPU / CPU-50% / GPU-OpenCV-OpenCL** | ✅ |
 | | `model_mnn` | `.mnn` path — used by **GPU-MNN** | ✅ |
@@ -153,11 +156,20 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 ### Web Interface Sections
 
 - **Video Display**: Real-time video with detection overlays and performance metrics
-- **Control Panel**: Start/stop processing and refresh system status
+- **Control Panel**: Start/stop processing, refresh system status, and download execution results
 - **Configuration**: Change processing mode, inference device, and camera settings
 - **System Info**: Current status, processing mode, and frame availability
 - **Console Output**: Real-time logging with color-coded message levels
 
+## Performance Results & Reports
+
+Every time inference finishes —whether manually stopped via the UI/console, or automatically upon reaching `inference_timeout_minutes`— the system automatically generates performance artifacts in the `src/processing/results/` folder:
+
+1. **CSV Log** (`benchmark_*.csv`): Raw, frame-by-frame data (inference time, fps, CPU/GPU/NPU usage, temperatures, etc.).
+2. **Text Summary** (`benchmark_*_analysis.txt`): A statistical summary detailing percentiles, averages, max/min limits, and hardware metrics.
+3. **PNG Graph** (`benchmark_*_report.png`): Visual charts plotting inference latency, frame rates, and resource utilization across the execution timeline.
+
+> **Graph Rendering Note:** When generating `.png` reports from benchmark runs with thousands of frames, the data is downsampled to ~300 points for visualization. By default (`graph_downsample_method = worst_case`), this is a **worst-case windowed downsampling** (plotting the maximum latency/usage and minimum FPS per window) to ensure instantaneous spikes are never lost. If you prefer to visualize the true visual average without spikes, you can set `graph_downsample_method = mean` in `config.ini` or use `--graph_method mean` in the automation script.
 
 ## Automated Benchmark Suite
 
