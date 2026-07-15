@@ -101,12 +101,16 @@ def analyze_csv_performance_data(csv_filepath):
             headers = reader.fieldnames or []
             print(f"[INFO] CSV headers detected: {headers}")
 
+            optional_columns = ['hailo_usage_percent', 'hailo_infer_ms', 'hailo_temp_c', 'hailo_power_w', 'rk3588_temp_c']
             for col in required_columns:
                 if col not in headers:
                     print(f"Warning: Column '{col}' not found in CSV file")
                     print(f"[INFO] Available columns: {headers}")
                     return None
                 data[col] = []
+            for col in optional_columns:
+                if col in headers:
+                    data[col] = []
 
             for row in reader:
                 for col in required_columns:
@@ -115,6 +119,13 @@ def analyze_csv_performance_data(csv_filepath):
                         data[col].append(value)
                     except ValueError:
                         data[col].append(0.0)
+                for col in optional_columns:
+                    if col in headers:
+                        try:
+                            value = float(row[col]) if row[col] else 0.0
+                            data[col].append(value)
+                        except ValueError:
+                            data[col].append(0.0)
 
         if not data or not data['inference_time_ms']:
             print("No valid data found in CSV file")
@@ -149,7 +160,7 @@ def analyze_csv_performance_data(csv_filepath):
         inf_stats['percentile_95'] = calc_percentile(data['inference_time_ms'], 95)
         inf_stats['percentile_99'] = calc_percentile(data['inference_time_ms'], 99)
 
-        return {
+        result = {
             'total_frames': total_frames,
             'inference_time': inf_stats,
             'total_frame_time': calc_stats(data['total_frame_time_ms']),
@@ -180,6 +191,12 @@ def analyze_csv_performance_data(csv_filepath):
                 'detection_rate': (sum(1 for x in data['detections_count'] if x > 0) / total_frames * 100) if total_frames > 0 else 0,
             },
         }
+        for col in optional_columns:
+            if col in data:
+                result[col] = calc_stats(data[col])
+                if col == 'hailo_usage_percent':
+                    result[col]['active_samples'] = sum(1 for x in data[col] if x > 0)
+        return result
 
     except Exception as e:
         print(f"Error analyzing CSV file: {e}")
@@ -197,55 +214,69 @@ def print_csv_analysis(csv_filepath):
     print("\n" + "=" * 60)
     print("PERFORMANCE DATA ANALYSIS")
     print("=" * 60)
-    print(f"Total frames analyzed: {stats['total_frames']}")
+    print(f"Total Frames Analyzed [count]: {stats['total_frames']}")
 
-    print(f"\nINFERENCE TIME STATISTICS (ms)")
-    print(f"  Mean: {stats['inference_time']['mean']:.2f}")
-    print(f"  Median: {stats['inference_time']['median']:.2f}")
-    print(f"  Std Dev: {stats['inference_time']['std']:.2f}")
-    print(f"  Min: {stats['inference_time']['min']:.2f}")
-    print(f"  Max: {stats['inference_time']['max']:.2f}")
-    print(f"  95th percentile: {stats['inference_time']['percentile_95']:.2f}")
-    print(f"  99th percentile: {stats['inference_time']['percentile_99']:.2f}")
+    print(f"\n--- INFERENCE TIME ---")
+    print(f"Inference Time Average [ms]: {stats['inference_time']['mean']:.2f}")
+    print(f"Inference Time Median [ms]: {stats['inference_time']['median']:.2f}")
+    print(f"Inference Time Std Dev [ms]: {stats['inference_time']['std']:.2f}")
+    print(f"Inference Time Min [ms]: {stats['inference_time']['min']:.2f}")
+    print(f"Inference Time Max [ms]: {stats['inference_time']['max']:.2f}")
+    print(f"Inference Time 95th Percentile [ms]: {stats['inference_time']['percentile_95']:.2f}")
+    print(f"Inference Time 99th Percentile [ms]: {stats['inference_time']['percentile_99']:.2f}")
 
-    print(f"\nCPU USAGE STATISTICS (%)")
-    print(f"  Mean: {stats['cpu_usage']['mean']:.1f}")
-    print(f"  Median: {stats['cpu_usage']['median']:.1f}")
-    print(f"  Min: {stats['cpu_usage']['min']:.1f}")
-    print(f"  Max: {stats['cpu_usage']['max']:.1f}")
+    print(f"\n--- CPU USAGE ---")
+    print(f"CPU Usage Average [%]: {stats['cpu_usage']['mean']:.1f}")
+    print(f"CPU Usage Median [%]: {stats['cpu_usage']['median']:.1f}")
+    print(f"CPU Usage Min [%]: {stats['cpu_usage']['min']:.1f}")
+    print(f"CPU Usage Max [%]: {stats['cpu_usage']['max']:.1f}")
 
-    print(f"\nNPU USAGE STATISTICS (%)")
+    print(f"\n--- RKNPU USAGE ---")
     for core_num in range(3):
         core_key = f'core{core_num}'
         core_stats = stats['npu_usage'][core_key]
         active_percentage = (core_stats['active_samples'] / stats['total_frames']) * 100
-        print(f"  RKNPU Core {core_num}:")
-        print(f"    Mean: {core_stats['mean']:.1f}")
-        print(f"    Median: {core_stats['median']:.1f}")
-        print(f"    Active samples: {core_stats['active_samples']} ({active_percentage:.1f}%)")
+        print(f"RKNPU Core {core_num} Average [%]: {core_stats['mean']:.1f}")
+        print(f"RKNPU Core {core_num} Median [%]: {core_stats['median']:.1f}")
+        print(f"RKNPU Core {core_num} Active Samples [count]: {core_stats['active_samples']} ({active_percentage:.1f}%)")
 
-    print(f"\nGPU USAGE STATISTICS (%)")
+    print(f"\n--- GPU USAGE ---")
     gpu_active_percentage = (stats['gpu_usage']['active_samples'] / stats['total_frames']) * 100
-    print(f"  Mean: {stats['gpu_usage']['mean']:.1f}")
-    print(f"  Median: {stats['gpu_usage']['median']:.1f}")
-    print(f"  Min: {stats['gpu_usage']['min']:.1f}")
-    print(f"  Max: {stats['gpu_usage']['max']:.1f}")
-    print(f"  Active samples: {stats['gpu_usage']['active_samples']} ({gpu_active_percentage:.1f}%)")
+    print(f"GPU Usage Average [%]: {stats['gpu_usage']['mean']:.1f}")
+    print(f"GPU Usage Median [%]: {stats['gpu_usage']['median']:.1f}")
+    print(f"GPU Usage Min [%]: {stats['gpu_usage']['min']:.1f}")
+    print(f"GPU Usage Max [%]: {stats['gpu_usage']['max']:.1f}")
+    print(f"GPU Usage Active Samples [count]: {stats['gpu_usage']['active_samples']} ({gpu_active_percentage:.1f}%)")
 
-    print(f"\nFPS STATISTICS")
-    print(f"  Mean: {stats['fps']['mean']:.2f}")
-    print(f"  Median: {stats['fps']['median']:.2f}")
-    print(f"  Min: {stats['fps']['min']:.2f}")
-    print(f"  Max: {stats['fps']['max']:.2f}")
+    if 'hailo_usage_percent' in stats:
+        print(f"\n--- HAILO-8 USAGE ---")
+        print(f"Hailo Occupancy Average [%]: {stats['hailo_usage_percent']['mean']:.1f}")
+        if 'hailo_infer_ms' in stats:
+            print(f"Hailo Latency Average [ms]: {stats['hailo_infer_ms']['mean']:.1f}")
+        if 'hailo_temp_c' in stats and stats['hailo_temp_c']['max'] > 0:
+            print(f"Hailo-8 Temp Max [°C]: {stats['hailo_temp_c']['max']:.1f}")
+            print(f"Hailo-8 Temp Average [°C]: {stats['hailo_temp_c']['mean']:.1f}")
+        if 'hailo_power_w' in stats and stats['hailo_power_w']['max'] > 0:
+            print(f"Hailo Power Average [W]: {stats['hailo_power_w']['mean']:.2f}")
 
-    print(f"\nDETECTION STATISTICS")
-    print(f"  Total detections: {stats['detections']['total']}")
-    print(f"  Mean detections per frame: {stats['detections']['mean_per_frame']:.2f}")
-    print(f"  Frames with detections: {stats['detections']['frames_with_detections']}")
-    print(f"  Detection rate: {stats['detections']['detection_rate']:.1f}%")
+    if 'rk3588_temp_c' in stats and stats['rk3588_temp_c']['max'] > 0:
+        print(f"\n--- SYSTEM TEMPERATURE ---")
+        print(f"RK3588 Max Temp [°C]: {stats['rk3588_temp_c']['max']:.1f}")
+        print(f"RK3588 Average Temp [°C]: {stats['rk3588_temp_c']['mean']:.1f}")
 
-    print("=" * 60)
+    print(f"\n--- FPS STATISTICS ---")
+    print(f"FPS Average [fps]: {stats['fps']['mean']:.2f}")
+    print(f"FPS Median [fps]: {stats['fps']['median']:.2f}")
+    print(f"FPS Min [fps]: {stats['fps']['min']:.2f}")
+    print(f"FPS Max [fps]: {stats['fps']['max']:.2f}")
 
+    print(f"\n--- DETECTIONS ---")
+    print(f"Total Detections [count]: {stats['detections']['total']}")
+    print(f"Mean Detections Per Frame [count]: {stats['detections']['mean_per_frame']:.2f}")
+    print(f"Frames With Detections [count]: {stats['detections']['frames_with_detections']}")
+    print(f"Detection Rate [%]: {stats['detections']['detection_rate']:.1f}")
+
+    print("\n" + "=" * 60 + "\n")
 
 def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
                             npu_core_id=None, model_name=None,

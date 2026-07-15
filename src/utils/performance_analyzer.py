@@ -546,11 +546,11 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
                 hailo_avg_y = graph3_y + graph3_height - int(hailo_mean * graph3_height / 100)
                 draw_dashed_line(draw, (graph3_x, hailo_avg_y), (graph3_x + graph_width, hailo_avg_y), fill='teal')
 
-        _hailo_avg_txt = f"Avg: {hailo_mean:.1f}%  |  {hailo_lat_mean:.1f} ms"
+        _hailo_avg_txt = f"Avg: {hailo_mean:.1f}%  |  Latency: {hailo_lat_mean:.1f} ms"
         if hailo_temp_mean > 0:
-            _hailo_avg_txt += f"  |  {hailo_temp_mean:.1f}°C"
+            _hailo_avg_txt += f"  |  Temp: {hailo_temp_mean:.1f}°C"
         if hailo_power_mean > 0:
-            _hailo_avg_txt += f"  |  {hailo_power_mean:.2f} W"
+            _hailo_avg_txt += f"  |  Power: {hailo_power_mean:.2f} W"
         draw.text((graph3_x + 5, graph3_y + graph3_height + 30), _hailo_avg_txt, fill='teal', font=font)
 
                 # Draw dashed average lines
