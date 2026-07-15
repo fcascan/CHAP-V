@@ -158,6 +158,31 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 - **System Info**: Current status, processing mode, and frame availability
 - **Console Output**: Real-time logging with color-coded message levels
 
+
+## Automated Benchmark Suite
+
+To facilitate exhaustive testing for research and performance comparison, the project includes an automation script: `run_all_benchmarks.py`.
+
+This script iterates autonomously over the 5 supported YOLO11 models (`n`, `s`, `m`, `l`, `x`) and the 7 inference modes (`RKNPU-Auto`, `RKNPU-Distributed`, `CPU`, `CPU-50%`, `GPU-OpenCV-OpenCL`, `GPU-MNN`, `NPU-Hailo8`), yielding 35 consecutive benchmark combinations. 
+
+For each iteration, the script dynamically rewrites `config.ini`, invokes `main.py`, and waits for the benchmark timeout to conclude naturally, generating performance reports and CSV logs automatically. 
+
+### Usage
+
+```bash
+# Run the complete test matrix with default settings
+python run_all_benchmarks.py
+
+# Run with custom parallel streams and a 5-minute timeout per test
+python run_all_benchmarks.py --instances 1 --timeout 5
+
+# Display all available arguments
+python run_all_benchmarks.py --help
+```
+
+### Logging
+The script features dual-logging. The complete output (including standard `main.py` progression) is mirrored simultaneously to the terminal console and to `run_all_benchmarks.log` in the project root to preserve historical results.
+
 ## GPU-OpenCV-OpenCL Inference (Mali-G610)
 
 > **Mode name:** `inference_device = GPU-OpenCV-OpenCL` (the legacy value `GPU` still works and
