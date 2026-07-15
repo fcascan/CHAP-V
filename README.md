@@ -1,10 +1,14 @@
 # CHAP-V: Comparative Hardware Accelerator Profiler for Vision
 
+<div align="center">
+
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://python.org)
 [![RKNN](https://img.shields.io/badge/RKNN-Lite2-orange.svg)](https://github.com/airockchip/rknn-toolkit2)
 [![Hailo](https://img.shields.io/badge/Hailo-8-green.svg)](https://hailo.ai/)
 [![Mali GPU](https://img.shields.io/badge/Mali-G610-blue.svg)](https://developer.arm.com/Processors/Mali-G610)
 [![License](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE.txt)
+
+</div>
 
 This project responds to the thesis:
 COMPARATIVE PERFORMANCE ANALYSIS OF HARDWARE ACCELERATION ARCHITECTURES FOR COMPUTER VISION NEURAL INFERENCE IN EDGE ENVIRONMENTS
