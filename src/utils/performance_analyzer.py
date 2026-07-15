@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """performance_analyzer.py
-Performance analysis and visualization module for YOLO RKNN processing metrics
+Performance analysis and visualization module for CHAP-V processing metrics
 by fcascan 2026
 """
 
@@ -111,10 +111,10 @@ def _draw_time_axis(draw, gx, gw, y_bottom, duration_s, ticks, font):
         draw.line([x, y_bottom, x, y_bottom + 5], fill='black', width=1)
         draw.text((x - 12, y_bottom + 8), label, fill='gray', font=font)
 
-def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
+def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
                                 benchmark_video=None, camera_index=None, inference_device=None):
     """
-    Generate performance analysis graphs as PNG file using PIL.
+    Generate performance analysis reports as PNG file using PIL.
 
     Args:
         csv_filepath (str): Path to the CSV file
@@ -129,14 +129,14 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         str: Path to the generated PNG file
     """
     if not PIL_AVAILABLE:
-        print("PIL not available for graph generation")
+        print("PIL not available for report generation")
         return None
         
     try:
         # Determine output path
         if output_path is None:
             base_name = os.path.splitext(csv_filepath)[0]
-            output_path = f"{base_name}_graphs.png"
+            output_path = f"{base_name}_report.png"
         
         # Read CSV data
         data = {}
@@ -223,6 +223,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         hailo_infer_ms = data.get('hailo_infer_ms', [0.0] * len(data['frame_number']))
         hailo_temp = data.get('hailo_temp_c', [0.0] * len(data['frame_number']))
         hailo_power = data.get('hailo_power_w', [0.0] * len(data['frame_number']))
+        detections = data.get('detections_count', [0.0] * len(data['frame_number']))
+        detection_frames = sum(1 for d in detections if float(d) > 0)
 
         # Calculate statistics
         inf_mean = mean(inference_times)
@@ -277,11 +279,13 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         stats_text = [
             f"Summary Statistics",
             f"  • Total frames analyzed: {len(inference_times)}",
+            f"  • Frames with detections: {detection_frames}",
             f"  • Average inference time: {inf_mean:.1f} ms",
             f"  • Median inference time: {inf_median:.1f} ms", 
             f"  • 95th percentile: {inf_95th:.1f} ms",
             f"  • Average FPS: {fps_mean:.1f}",
-            f"  • Average NPU usage: {npu_mean:.1f}%",
+            f"  • Average RKNPU usage: {npu_mean:.1f}%",
+            f"  • Average Hailo-8 usage: {hailo_mean:.1f}%",
             f"  • Average CPU usage: {cpu_mean:.1f}%",
             f"  • Average GPU usage: {gpu_mean:.1f}%",
             f"  • Min inference time: {min(inference_times):.1f} ms",
@@ -657,7 +661,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         draw.text((legend_x + 40, legend_y + 165), "FPS Average", fill='black', font=font)
 
         draw_dashed_line(draw, (legend_x, legend_y + 190), (legend_x + 30, legend_y + 190), fill='darkorange')
-        draw.text((legend_x + 40, legend_y + 185), "NPU Average", fill='black', font=font)
+        draw.text((legend_x + 40, legend_y + 185), "RKNPU Average", fill='black', font=font)
 
         draw_dashed_line(draw, (legend_x, legend_y + 210), (legend_x + 30, legend_y + 210), fill='darkviolet')
         draw.text((legend_x + 40, legend_y + 205), "CPU Average", fill='black', font=font)
@@ -674,7 +678,7 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
         return output_path
         
     except Exception as e:
-        print(f"Error generating performance graphs: {e}")
+        print(f"Error generating performance reports: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -682,6 +686,8 @@ def generate_performance_graphs(csv_filepath, output_path=None, npu_core_id=None
 def print_csv_analysis(csv_filepath):
     """Print detailed analysis of CSV performance data"""
     try:
+        import csv
+        from statistics import mean
         with open(csv_filepath, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             data = list(reader)
@@ -690,71 +696,45 @@ def print_csv_analysis(csv_filepath):
             print("No data found in CSV file")
             return
         
-        # Extract numeric data
-        inference_times = [float(row['inference_time_ms']) for row in data if row['inference_time_ms']]
-        fps_data = [float(row['fps_actual']) for row in data if row['fps_actual']]
-        cpu_usage = [float(row['cpu_usage_percent']) for row in data if row['cpu_usage_percent']]
-        npu_core0 = [float(row['npu_core0_percent']) for row in data if row['npu_core0_percent']]
-        npu_core1 = [float(row['npu_core1_percent']) for row in data if row['npu_core1_percent']]
-        npu_core2 = [float(row['npu_core2_percent']) for row in data if row['npu_core2_percent']]
-        gpu_usage = [float(row['gpu_usage_percent']) for row in data if row['gpu_usage_percent']]
-        detections = [float(row['detections_count']) for row in data if row['detections_count']]
+        # Helper to extract numeric data
+        def get_col(col_name):
+            return [float(row[col_name]) for row in data if col_name in row and row[col_name]]
+            
+        inference_times = get_col('inference_time_ms')
+        fps_data = get_col('fps_actual')
+        cpu_usage = get_col('cpu_usage_percent')
+        npu_core0 = get_col('npu_core0_percent')
+        npu_core1 = get_col('npu_core1_percent')
+        npu_core2 = get_col('npu_core2_percent')
+        gpu_usage = get_col('gpu_usage_percent')
+        hailo_usage = get_col('hailo_usage_percent')
+        rk3588_temp = get_col('rk3588_temp_c')
+        hailo_temp = get_col('hailo_temp_c')
+        detections = get_col('detections_count')
         
-        print("\\n" + "="*60)
+        detection_frames = sum(1 for d in detections if d > 0)
+        
+        print("\n" + "="*60)
         print("PERFORMANCE DATA ANALYSIS")
         print("="*60)
-        print(f"Total frames analyzed: {len(data)}")
         
-        # Inference time analysis
-        print(f"\\nINFERENCE TIME STATISTICS (ms)")
-        print(f"  Mean: {mean(inference_times):.2f}")
-        print(f"  Median: {median(inference_times):.2f}")
-        print(f"  Std Dev: {std(inference_times):.2f}")
-        print(f"  Min: {min(inference_times):.2f}")
-        print(f"  Max: {max(inference_times):.2f}")
-        print(f"  95th percentile: {percentile(inference_times, 95):.2f}")
-        print(f"  99th percentile: {percentile(inference_times, 99):.2f}")
+        def safe_mean(arr): return mean(arr) if arr else 0.0
+        def safe_max(arr): return max(arr) if arr else 0.0
         
-        # CPU usage analysis
-        print(f"\\nCPU USAGE STATISTICS (%)")
-        print(f"  Mean: {mean(cpu_usage):.1f}")
-        print(f"  Median: {median(cpu_usage):.1f}")
-        print(f"  Min: {min(cpu_usage):.1f}")
-        print(f"  Max: {max(cpu_usage):.1f}")
-        
-        # NPU usage analysis
-        print(f"\\nNPU USAGE STATISTICS (%)")
-        
-        for core_idx, core_data in enumerate([npu_core0, npu_core1, npu_core2]):
-            active_samples = [x for x in core_data if x > 0]
-            print(f"  RKNPU Core {core_idx}:")
-            print(f"    Mean: {mean(core_data):.1f}")
-            print(f"    Median: {median(core_data):.1f}")
-            print(f"    Active samples: {len(active_samples)} ({len(active_samples)/len(core_data)*100:.1f}%)")
-        
-        # GPU usage analysis  
-        active_gpu = [x for x in gpu_usage if x > 0]
-        print(f"\\nGPU USAGE STATISTICS (%)")
-        print(f"  Mean: {mean(gpu_usage):.1f}")
-        print(f"  Median: {median(gpu_usage):.1f}")
-        print(f"  Min: {min(gpu_usage):.1f}")
-        print(f"  Max: {max(gpu_usage):.1f}")
-        print(f"  Active samples: {len(active_gpu)} ({len(active_gpu)/len(gpu_usage)*100:.1f}%)")
-        
-        # FPS analysis
-        print(f"\\nFPS STATISTICS")
-        print(f"  Mean: {mean(fps_data):.2f}")
-        print(f"  Median: {median(fps_data):.2f}")
-        print(f"  Min: {min(fps_data):.2f}")
-        print(f"  Max: {max(fps_data):.2f}")
-        
-        # Detection analysis
-        detection_frames = sum(1 for d in detections if d > 0)
-        print(f"\\nDETECTION STATISTICS")
-        print(f"  Total detections: {sum(detections)}")
-        print(f"  Mean detections per frame: {mean(detections):.2f}")
-        print(f"  Frames with detections: {detection_frames}")
-        print(f"  Detection rate: {detection_frames/len(detections)*100:.1f}%")
+        # Explicit output requested by user
+        print(f"Total frames analizados []: {len(data)}")
+        print(f"Frames with Detections [count]: {detection_frames}")
+        print(f"Inference Time Max [ms]: {safe_max(inference_times):.2f}")
+        print(f"Inference Time Average [ms]: {safe_mean(inference_times):.2f}")
+        print(f"FPS Avg [FPS]: {safe_mean(fps_data):.2f}")
+        print(f"CPU Load Avg [%]: {safe_mean(cpu_usage):.1f}")
+        print(f"GPU Avg [%]: {safe_mean(gpu_usage):.1f}")
+        print(f"RKNPU Core0 Avg [%]: {safe_mean(npu_core0):.1f}")
+        print(f"RKNPU Core1 Avg [%]: {safe_mean(npu_core1):.1f}")
+        print(f"RKNPU Core2 Avg [%]: {safe_mean(npu_core2):.1f}")
+        print(f"Hailo-8 Load Avg [%]: {safe_mean(hailo_usage):.1f}")
+        print(f"RK3588 Max Temp [°C]: {safe_max(rk3588_temp):.1f}")
+        print(f"Hailo-8 Temp Max [°C]: {safe_max(hailo_temp):.1f}")
         
         print("="*60)
         
@@ -829,19 +809,19 @@ def main():
         # Print to console
         print_csv_analysis(csv_file)
     
-    # Generate performance graphs
-    print("\\nGenerating performance graphs...")
+    # Generate performance reports
+    print("\\nGenerating performance reports...")
     try:
         base_name = os.path.splitext(csv_file)[0]
-        png_path = f"{base_name}_graphs.png"
+        png_path = f"{base_name}_report.png"
         
-        generated_graph = generate_performance_graphs(csv_file, png_path)
-        if generated_graph:
-            print(f"Performance graphs saved to: {generated_graph}")
+        generated_report = generate_performance_reports(csv_file, png_path)
+        if generated_report:
+            print(f"Performance reports saved to: {generated_report}")
         else:
-            print("Failed to generate performance graphs")
+            print("Failed to generate performance reports")
     except Exception as e:
-        print(f"Error generating graphs: {e}")
+        print(f"Error generating reports: {e}")
 
 if __name__ == "__main__":
     main()

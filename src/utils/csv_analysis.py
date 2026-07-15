@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """csv_analysis.py
-CSV performance analysis helpers for YOLO RKNN processing.
+CSV performance analysis helpers for CHAP-V processing.
 by fcascan 2026
 """
 
@@ -310,25 +310,25 @@ def auto_analyze_latest_csv(device_name="NPU", logger=None, csv_filepath=None,
             log_message(f"Analysis report saved to: {os.path.basename(analysis_filepath)}")
 
             try:
-                from .performance_analyzer import generate_performance_graphs
+                from .performance_analyzer import generate_performance_reports
 
                 base_name = latest_csv.rsplit('.', 1)[0]
-                png_path = f"{base_name}_graphs.png"
+                png_path = f"{base_name}_report.png"
 
-                generated_graph = generate_performance_graphs(latest_csv, png_path,
+                generated_report = generate_performance_reports(latest_csv, png_path,
                                                               npu_core_id=npu_core_id,
                                                               model_name=model_name,
                                                               benchmark_video=benchmark_video,
                                                               camera_index=camera_index,
                                                               inference_device=inference_device)
-                if generated_graph:
-                    log_message(f"Performance graphs saved to: {os.path.basename(generated_graph)}")
+                if generated_report:
+                    log_message(f"Performance reports saved to: {os.path.basename(generated_report)}")
                 else:
-                    log_message("Failed to generate performance graphs")
+                    log_message("Failed to generate performance reports")
             except ImportError:
-                log_message("Cannot generate graphs - missing performance_analyzer module")
+                log_message("Cannot generate reports - missing performance_analyzer module")
             except Exception as e:
-                log_message(f"Error generating graphs: {e}")
+                log_message(f"Error generating reports: {e}")
 
         except Exception as e:
             log_message(f"Error saving analysis file: {e}")

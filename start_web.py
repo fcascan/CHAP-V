@@ -1,8 +1,10 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 """start_web.py
-Start YOLO RKNN Web Interface
-by fcascan 2025
+Start CHAP-V Web Interface
+by fcascan 2026
 """
 
 import sys
@@ -17,7 +19,7 @@ if __name__ == "__main__":
     import argparse
     from src.web.web_server import create_web_server
     
-    parser = argparse.ArgumentParser(description='YOLO RKNN Web Interface')
+    parser = argparse.ArgumentParser(description='CHAP-V Web Interface')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
     parser.add_argument('--port', type=int, default=8080, help='Port to bind to (default: 8080)')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')

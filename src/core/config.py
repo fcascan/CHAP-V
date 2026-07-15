@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """config.py
-Loads and reloads config.ini into module globals for the YOLO RKNN/NPU project.
+Loads and reloads config.ini into module globals for the CHAP-V project.
 by fcascan 2026
 """
 import os

@@ -232,3 +232,11 @@ def get_processor_usage_stats(inference_device="NPU", npu_samples=None):
         stats['gpu'] = None
 
     return stats
+
+
+def get_soc_temp():
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            return float(f.read().strip()) / 1000.0
+    except Exception:
+        return 0.0

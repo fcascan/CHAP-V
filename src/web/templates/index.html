@@ -1,10 +1,15 @@
 <!DOCTYPE html>
-<!-- index.html - YOLO RKNN web interface page (controls, video, system monitor, configuration). by fcascan 2026 -->
+<!-- index.html -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (C) 2026 fcascan -->
+
+<!-- index.html - CHAP-V web interface page (controls, video, system monitor, configuration).  -->
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YOLO RKNN Web Interface</title>
+    <title>CHAP-V Web Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,7 +18,7 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>YOLO RKNN Web Interface</h1>
+            <h1>CHAP-V Web Interface</h1>
             <div class="status-indicator">
                 <span class="status-text">Status:  </span>
                 <span id="processing-status" class="status-text">Disconnected</span>
@@ -43,8 +48,11 @@
                             <button id="download-csv-btn" class="btn btn-warning" onclick="downloadLatestCSV()">
                                 Download Latest CSV
                             </button>
-                            <button id="download-graphs-btn" class="btn btn-warning" onclick="downloadLatestGraphs()">
-                                Download Latest Graphs
+                            <button id="download-analysis-btn" class="btn btn-warning" onclick="downloadLatestAnalysis()">
+                                Download Latest Analysis
+                            </button>
+                            <button id="download-reports-btn" class="btn btn-warning" onclick="downloadLatestReports()">
+                                Download Latest Report
                             </button>
                         </div>
                     </div>
@@ -337,7 +345,7 @@
 
     <!-- Footer -->
     <footer class="footer">
-        <p>&copy; 2026 YOLO RKNN Web Interface by
+        <p>&copy; 2026 CHAP-V Web Interface by
             <a href="https://github.com/fcascan">fcascan</a>
         </p>
         <p>This program is free software licensed under the

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """dependency_manager.py
-Automatic dependency management for YOLO RKNN/NPU project
+Automatic dependency management for CHAP-V project
 by fcascan 2026
 """
 import os

@@ -1,8 +1,10 @@
 // script.js
-// YOLO RKNN web interface front-end: controls, live video, system-monitor charts, config panel.
-// by fcascan 2026
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 fcascan
 
-class YOLOWebInterface {
+// CHAP-V web interface front-end: controls, live video, system-monitor charts, config panel.
+
+class CHAPVWebInterface {
     constructor() {
         this.socket = null;
         this.autoScroll = true;
@@ -1221,23 +1223,23 @@ class YOLOWebInterface {
 
 // Global functions for button onclick handlers
 function startProcessing() {
-    window.yoloInterface.startProcessing();
+    window.chapvInterface.startProcessing();
 }
 
 function stopProcessing() {
-    window.yoloInterface.stopProcessing();
+    window.chapvInterface.stopProcessing();
 }
 
 function refreshStatus() {
-    window.yoloInterface.refreshStatus();
+    window.chapvInterface.refreshStatus();
 }
 
 function clearConsole() {
-    window.yoloInterface.clearConsole();
+    window.chapvInterface.clearConsole();
 }
 
 function toggleAutoScroll() {
-    window.yoloInterface.toggleAutoScroll();
+    window.chapvInterface.toggleAutoScroll();
 }
 
 // Toggle collapsible sections
@@ -1285,16 +1287,21 @@ function downloadLatestCSV() {
     window.location.href = '/api/download/latest_csv?t=' + Date.now();
 }
 
-function downloadLatestGraphs() {
-    window.location.href = '/api/download/latest_graphs?t=' + Date.now();
+
+function downloadLatestAnalysis() {
+    window.location.href = '/api/download/latest_analysis?t=' + Date.now();
+}
+
+function downloadLatestReports() {
+    window.location.href = '/api/download/latest_reports?t=' + Date.now();
 }
 
 // Initialize the interface when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    window.yoloInterface = new YOLOWebInterface();
+    window.chapvInterface = new CHAPVWebInterface();
     
     // Request console updates every 2 seconds
     setInterval(() => {
-        window.yoloInterface.requestConsoleUpdate();
+        window.chapvInterface.requestConsoleUpdate();
     }, 500);
 });

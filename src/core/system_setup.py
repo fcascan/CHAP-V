@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """system_setup.py
-System setup and configuration for YOLO RKNN/NPU project
+System setup and configuration for CHAP-V project
 by fcascan 2026
 """
 import sys

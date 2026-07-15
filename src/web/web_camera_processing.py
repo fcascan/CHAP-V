@@ -26,7 +26,7 @@ except ImportError:
     _PSUTIL_AVAILABLE = False
 
 try:
-    from ..utils.my_htop import get_npu_info, get_gpu_info
+    from ..utils.my_htop import get_npu_info, get_gpu_info, get_soc_temp
     _HTOP_AVAILABLE = True
 except ImportError:
     _HTOP_AVAILABLE = False
@@ -119,6 +119,7 @@ def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output
             'hailo_infer_ms': round(hailo_infer_ms, 2),
             'hailo_temp_c': hailo_temp_c,
             'hailo_power_w': hailo_power_w,
+            'rk3588_temp_c': get_soc_temp(),
             'fps_actual': round(fps, 2),
             'detections_count': len(boxes) if boxes is not None else 0,
         })

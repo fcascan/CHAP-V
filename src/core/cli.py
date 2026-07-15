@@ -136,7 +136,7 @@ def print_console_banner(args):
     """Print a concise startup summary for console mode."""
     mode_label = "BENCHMARK (video)" if BENCHMARK_MODE else "CAMERA (live)"
     print("=" * 56)
-    print("  YOLO RKNN — Console Mode")
+    print("  CHAP-V — Console Mode")
     print("=" * 56)
     print(f"  Mode              : {mode_label}")
     print(f"  Device            : {INFERENCE_DEVICE}")

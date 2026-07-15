@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """web_server.py
-Flask web server for YOLO RKNN web interface
+Flask web server for CHAP-V web interface
 by fcascan 2026
 """
 import os
@@ -26,7 +26,7 @@ from flask_socketio import SocketIO, emit
 from src.core.config import *
 
 class WebServer:
-    """Web server for YOLO RKNN interface"""
+    """Web server for CHAP-V interface"""
     
     def __init__(self, host='0.0.0.0', port=8080, http_logging=False):
         self.host = host
@@ -35,7 +35,7 @@ class WebServer:
         self.app = Flask(__name__, 
                         template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
                         static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-        self.app.config['SECRET_KEY'] = 'yolo_rknn_secret_key'
+        self.app.config['SECRET_KEY'] = 'chap_v_secret_key'
         # Configure SocketIO with better compatibility
         self.socketio = SocketIO(self.app, 
                                 cors_allowed_origins="*",
@@ -424,9 +424,9 @@ class WebServer:
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
 
-        @self.app.route('/api/download/latest_graphs')
-        def download_latest_graphs():
-            """Download all graphs from the latest run (ZIP when multiple instances)."""
+        @self.app.route('/api/download/latest_analysis')
+        def download_latest_analysis():
+            """Download all analysis text files from the latest run (ZIP when multiple instances)."""
             import glob
             import re
             import zipfile
@@ -438,11 +438,51 @@ class WebServer:
                 return m.group(1) if m else ''
 
             try:
-                png_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', '*_performance_metrics_*_graphs.png')
+                txt_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', '*_performance_metrics_*_analysis.txt')
+                txt_files = [f for f in glob.glob(txt_pattern) if _ts(f)]
+
+                if not txt_files:
+                    return jsonify({'error': 'No analysis files found'}), 404
+
+                run_ts = max(_ts(f) for f in txt_files)
+                run_files = sorted(f for f in txt_files if _ts(f) == run_ts)
+
+                if len(run_files) == 1:
+                    return send_file(run_files[0], as_attachment=True,
+                                     download_name=os.path.basename(run_files[0]),
+                                     mimetype='text/plain')
+
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for f in run_files:
+                        zf.write(f, os.path.basename(f))
+                buf.seek(0)
+                return send_file(buf, as_attachment=True,
+                                 download_name=f"analysis_{run_ts}.zip",
+                                 mimetype='application/zip')
+
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/download/latest_reports')
+        def download_latest_reports():
+            """Download all reports from the latest run (ZIP when multiple instances)."""
+            import glob
+            import re
+            import zipfile
+            import io
+            from flask import send_file
+
+            def _ts(path):
+                m = re.search(r'(\d{8}_\d{6})', os.path.basename(path))
+                return m.group(1) if m else ''
+
+            try:
+                png_pattern = os.path.join(BASE_DIR, 'src', 'processing', 'results', '*_performance_metrics_*_report.png')
                 png_files = [f for f in glob.glob(png_pattern) if _ts(f)]
 
                 if not png_files:
-                    return jsonify({'error': 'No graph files found'}), 404
+                    return jsonify({'error': 'No report files found'}), 404
 
                 run_ts = max(_ts(f) for f in png_files)
                 run_files = sorted(f for f in png_files if _ts(f) == run_ts)
@@ -458,7 +498,7 @@ class WebServer:
                         zf.write(f, os.path.basename(f))
                 buf.seek(0)
                 return send_file(buf, as_attachment=True,
-                                 download_name=f"graphs_{run_ts}.zip",
+                                 download_name=f"reports_{run_ts}.zip",
                                  mimetype='application/zip')
 
             except Exception as e:
