@@ -92,8 +92,11 @@ _VDEVICE_LOCK = threading.Lock()
 # the low power + headroom are REAL, not a measurement error.
 #
 # Temperature + power are single-shot control reads off the shared VDevice's physical device, taken
-# ONLY at the ~500 ms monitor cadence (NEVER per-frame — PCIe control round-trips contend with
-# inference and tank FPS). Power is throttled to >= ~3 s between reads and cached, to limit the
+# at the ~500 ms monitor cadence when the web monitor is polling, and SELF-SAMPLED by the stream
+# workers at a >= _ENV_MIN_INTERVAL cadence otherwise (headless/SSH benchmark runs — without this the
+# per-frame CSVs recorded temp/power as 0 because get_hailo_stats() is only called by the web monitor
+# while a browser is connected). NEVER per-frame — PCIe control round-trips contend with inference
+# and tank FPS. Power is throttled to >= ~3 s between reads and cached, to limit the
 # "overcurrent protection" warning HailoRT prints on each overcurrent-DVM measurement.
 # (A CONTINUOUS averaged measurement was tried but set/start_power_measurement reconfigures the
 # sensor into a mode where get_chip_temperature() ALSO fails -> temp and power both went blank;
@@ -105,6 +108,9 @@ _last_temp = None
 _last_power = None
 _last_power_t = 0.0
 _POWER_MIN_INTERVAL = 3.0               # min seconds between single-shot power reads (caps the warning)
+_ENV_LOCK = threading.Lock()            # serializes control reads (monitor thread vs stream workers)
+_last_env_t = 0.0                       # last _sample_env() attempt (success or not; avoids retry storms)
+_ENV_MIN_INTERVAL = 2.0                 # min seconds between worker-triggered env samples
 
 
 def _record_infer(dt):
@@ -141,9 +147,55 @@ def hailo_device_occupancy():
     return _device_stats()[0]
 
 
+def _sample_env(now=None):
+    """Single-shot temperature (+ throttled power) control reads; updates the module cache.
+    Reads temp/power INLINE, holding the physical Device in LOCAL scope ONLY for the duration of the
+    reads, then releasing it (del). This is critical:
+     * The Device MUST stay referenced WHILE its .control is used, or HailoRT raises "The device in
+       use has been released" (that blanked temp/power when a helper returned phys[0].control and let
+       `phys` go out of scope).
+     * But the Device must NOT be CACHED/held across calls: keeping the physical-device handle open
+       blocks the inference output (D2H) vstreams -> HAILO_TIMEOUT and inference dies. So we acquire
+       it fresh each sample and release it immediately (the original working pattern)."""
+    global _last_temp, _last_power, _last_power_t, _last_env_t
+    if now is None:
+        now = time.time()
+    _last_env_t = now   # stamped even on failure so per-frame callers don't retry-storm
+    if _VDEVICE is None:
+        return
+    try:
+        phys = _VDEVICE.get_physical_devices()
+        if phys:
+            ctrl = phys[0].control
+            try:
+                _last_temp = round(float(ctrl.get_chip_temperature().ts0_temperature), 1)
+            except Exception:
+                pass   # keep the stale cached temp
+            # Single-shot power (whole-module W via AUTO/overcurrent DVM), throttled + cached.
+            # ~1 W is REAL (host-bound). Each read warns once + auto-restores overcurrent protection.
+            if now - _last_power_t >= _POWER_MIN_INTERVAL:
+                try:
+                    _last_power = round(float(ctrl.power_measurement()), 2)
+                except Exception:
+                    _last_power = None
+                _last_power_t = now
+            del ctrl, phys   # release the physical-device handle immediately (do NOT hold it)
+    except Exception:
+        pass
+
+
 def hailo_env():
-    """Last (temperature_C, power_W) the monitor sampled (cached; NO device I/O). (None, None) until
-    the first sample. Recorded per-frame by the workers so the report can show avg temp/power."""
+    """Last (temperature_C, power_W) sampled (cached). SELF-SAMPLES (>= _ENV_MIN_INTERVAL apart) when
+    the cache is stale — so headless/SSH benchmark runs, where no browser polls get_hailo_stats(),
+    still record real temp/power into the per-frame CSVs. Non-blocking: at most one stream worker
+    samples while the rest return the cache untouched. (None, None) until the first sample."""
+    if _VDEVICE is not None and time.time() - _last_env_t >= _ENV_MIN_INTERVAL:
+        if _ENV_LOCK.acquire(blocking=False):
+            try:
+                if time.time() - _last_env_t >= _ENV_MIN_INTERVAL:   # re-check under the lock
+                    _sample_env()
+            finally:
+                _ENV_LOCK.release()
     return _last_temp, _last_power
 
 
@@ -152,44 +204,14 @@ def get_hailo_stats():
       {'utilization': %|None, 'latency_ms': ms|None, 'temperature': degC|None, 'power': W|None, 'fps': float}.
     utilization = device-occupancy busy-fraction (HOST-BOUND -> well below 100). Sampled at ~500 ms;
     NEVER per-frame (temp/power are PCIe control reads). None for util when idle."""
-    global _last_temp, _last_power, _last_power_t
     now = time.time()
     occ, fps, latency_ms = _device_stats(now)
     util = occ if fps > 0 else None
-    temp = power = None
-    # Read temp/power INLINE, holding the physical Device in LOCAL scope ONLY for the duration of the
-    # reads, then releasing it (del). This is critical:
-    #  * The Device MUST stay referenced WHILE its .control is used, or HailoRT raises "The device in
-    #    use has been released" (that blanked temp/power when a helper returned phys[0].control and let
-    #    `phys` go out of scope).
-    #  * But the Device must NOT be CACHED/held across calls: keeping the physical-device handle open
-    #    blocks the inference output (D2H) vstreams -> HAILO_TIMEOUT and inference dies. So we acquire
-    #    it fresh each ~500 ms sample and release it immediately (the original working pattern).
-    if _VDEVICE is not None:
-        try:
-            phys = _VDEVICE.get_physical_devices()
-            if phys:
-                ctrl = phys[0].control
-                try:
-                    temp = round(float(ctrl.get_chip_temperature().ts0_temperature), 1)
-                    _last_temp = temp
-                except Exception:
-                    temp = _last_temp
-                # Single-shot power (whole-module W via AUTO/overcurrent DVM), throttled + cached.
-                # ~1 W is REAL (host-bound). Each read warns once + auto-restores overcurrent protection.
-                if now - _last_power_t >= _POWER_MIN_INTERVAL:
-                    try:
-                        _last_power = round(float(ctrl.power_measurement()), 2)
-                    except Exception:
-                        _last_power = None
-                    _last_power_t = now
-                power = _last_power
-                del ctrl, phys   # release the physical-device handle immediately (do NOT hold it)
-        except Exception:
-            pass
+    with _ENV_LOCK:   # serialize against worker-triggered samples
+        _sample_env(now)
     return {'utilization': util,
             'latency_ms': round(latency_ms, 2) if latency_ms is not None else None,
-            'temperature': temp, 'power': power,
+            'temperature': _last_temp, 'power': _last_power,
             'fps': round(fps, 1)}
 
 

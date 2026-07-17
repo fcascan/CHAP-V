@@ -28,7 +28,11 @@ def setup_logger(log_file="run_all_benchmarks.log"):
     return logger
 
 def update_config(config_path, params, logger):
-    config = configparser.ConfigParser()
+    # interpolation=None: values may contain a literal '%' (e.g. inference_device = CPU-50%).
+    # The default BasicInterpolation raised "invalid interpolation syntax in 'CPU-50%'" on write,
+    # silently skipping every CPU-50% iteration. (src/core/config.py already reads with
+    # interpolation=None, so the round-trip is consistent.)
+    config = configparser.ConfigParser(interpolation=None)
     config.optionxform = str  # Preserve case
     
     if not os.path.exists(config_path):
@@ -112,6 +116,10 @@ Examples:
   # Run with custom instances and timeout
   python run_all_benchmarks.py --instances 1 --timeout 5
 
+  # Run the FULL suite twice: first with 3 parallel streams, then with 1
+  # (fills both tables of the measurements spreadsheet in one execution)
+  python run_all_benchmarks.py --instances 3 1
+
   # Run only 1 iteration of benchmark_loop
   python run_all_benchmarks.py --no-loop
 """
@@ -127,8 +135,10 @@ Examples:
     parser.add_argument('--no-loop', dest='benchmark_loop', action='store_false',
                         help="Disable continuous loop (stops after video ends).")
                         
-    parser.add_argument('--instances', type=int, default=None,
-                        help="Number of parallel inference streams (max_inference_instances).")
+    parser.add_argument('--instances', type=int, nargs='+', default=None,
+                        help="Parallel inference stream count(s) (max_inference_instances). "
+                             "Accepts several values (e.g. --instances 3 1) to run the whole "
+                             "suite once per count.")
                         
     parser.add_argument('--timeout', type=int, default=None,
                         help='Inference timeout in minutes')
@@ -158,44 +168,48 @@ Examples:
     ]
     
     config_path = 'config.ini'
-    total_combinations = len(models) * len(modes)
+    # One full sweep per requested instance count ([None] = single sweep, config.ini value untouched)
+    instances_list = args.instances if args.instances else [None]
+    total_combinations = len(models) * len(modes) * len(instances_list)
     current_iteration = 0
-    
-    for model_size in models:
-        for mode in modes:
-            current_iteration += 1
-            logger.info("-" * 60)
-            logger.info(f"Running iteration {current_iteration}/{total_combinations} -> Model: {model_size} | Mode: {mode}")
-            
-            # Prepare configuration params
-            params = {
-                'size': model_size,
-                'mode': mode,
-                'benchmark_mode': args.benchmark_mode if args.benchmark_mode is not None else True,
-                'benchmark_loop': args.benchmark_loop if args.benchmark_loop is not None else True,
-                'instances': args.instances,
-                'timeout': args.timeout,
-                'ignore_frames': args.ignore_frames,
-                'ignore_final_frames': args.ignore_final_frames,
-                'graph_method': args.graph_method
-            }
-            
-            if not update_config(config_path, params, logger):
-                logger.error(f"Failed to setup config for {model_size} | {mode}. Skipping.")
-                continue
-                
-            logger.info(f"Configuration successfully applied for {model_size} | {mode}. Launching main.py...")
-            
-            try:
-                ret_code = run_main(logger)
-                if ret_code == 0:
-                    logger.info(f"Iteration completed successfully (Return Code: {ret_code})")
-                else:
-                    logger.warning(f"Iteration completed with non-zero return code: {ret_code}")
-            except Exception as e:
-                logger.error(f"Exception while running main.py for {model_size} | {mode}: {e}")
-                
-            logger.info("-" * 60)
+
+    for instances in instances_list:
+        for model_size in models:
+            for mode in modes:
+                current_iteration += 1
+                inst_label = instances if instances is not None else 'config'
+                logger.info("-" * 60)
+                logger.info(f"Running iteration {current_iteration}/{total_combinations} -> Model: {model_size} | Mode: {mode} | Instances: {inst_label}")
+
+                # Prepare configuration params
+                params = {
+                    'size': model_size,
+                    'mode': mode,
+                    'benchmark_mode': args.benchmark_mode if args.benchmark_mode is not None else True,
+                    'benchmark_loop': args.benchmark_loop if args.benchmark_loop is not None else True,
+                    'instances': instances,
+                    'timeout': args.timeout,
+                    'ignore_frames': args.ignore_frames,
+                    'ignore_final_frames': args.ignore_final_frames,
+                    'graph_method': args.graph_method
+                }
+
+                if not update_config(config_path, params, logger):
+                    logger.error(f"Failed to setup config for {model_size} | {mode}. Skipping.")
+                    continue
+
+                logger.info(f"Configuration successfully applied for {model_size} | {mode} | Instances: {inst_label}. Launching main.py...")
+
+                try:
+                    ret_code = run_main(logger)
+                    if ret_code == 0:
+                        logger.info(f"Iteration completed successfully (Return Code: {ret_code})")
+                    else:
+                        logger.warning(f"Iteration completed with non-zero return code: {ret_code}")
+                except Exception as e:
+                    logger.error(f"Exception while running main.py for {model_size} | {mode}: {e}")
+
+                logger.info("-" * 60)
             
     logger.info("=" * 60)
     logger.info("Automated Benchmark Suite Completed!")

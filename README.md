@@ -165,9 +165,11 @@ sudo python3 start_web.py --port 8080 --host 0.0.0.0
 
 Every time inference finishes —whether manually stopped via the UI/console, or automatically upon reaching `inference_timeout_minutes`— the system automatically generates performance artifacts in the `src/processing/results/` folder:
 
-1. **CSV Log** (`benchmark_*.csv`): Raw, frame-by-frame data (inference time, fps, CPU/GPU/NPU usage, temperatures, etc.).
-2. **Text Summary** (`benchmark_*_analysis.txt`): A statistical summary detailing percentiles, averages, max/min limits, and hardware metrics.
-3. **PNG Graph** (`benchmark_*_report.png`): Visual charts plotting inference latency, frame rates, and resource utilization across the execution timeline.
+1. **CSV Log** (`<timestamp>_performance_metrics_<MODE>[_coreN]_stream<N>.csv`): Raw, frame-by-frame data (inference time, fps, CPU/GPU/NPU usage, temperatures, etc.). One file per parallel stream; RKNPU modes include the NPU core binding (`coreN`) in the name. All files of the same execution share the timestamp prefix.
+2. **Text Summary** (`*_analysis.txt`): A statistical summary detailing percentiles, averages, max/min limits, and hardware metrics.
+3. **PNG Graph** (`*_report.png`): Visual charts plotting inference latency, frame rates, and resource utilization across the execution timeline.
+
+> **Hailo-8 metrics note:** in `NPU-Hailo8` mode the per-frame CSV also records the module's real chip temperature (`hailo_temp_c`) and power draw (`hailo_power_w`), self-sampled every ~2 s during inference — they are captured even in headless/SSH runs where the web monitor is not open.
 
 > **Graph Rendering Note:** When generating `.png` reports from benchmark runs with thousands of frames, the data is downsampled to ~300 points for visualization. By default (`graph_downsample_method = worst_case`), this is a **worst-case windowed downsampling** (plotting the maximum latency/usage and minimum FPS per window) to ensure instantaneous spikes are never lost. If you prefer to visualize the true visual average without spikes, you can set `graph_downsample_method = mean` in `config.ini` or use `--graph_method mean` in the automation script.
 
@@ -175,22 +177,29 @@ Every time inference finishes —whether manually stopped via the UI/console, or
 
 To facilitate exhaustive testing for research and performance comparison, the project includes an automation script: `run_all_benchmarks.py`.
 
-This script iterates autonomously over the 5 supported YOLO11 models (`n`, `s`, `m`, `l`, `x`) and the 7 inference modes (`RKNPU-Auto`, `RKNPU-Distributed`, `CPU`, `CPU-50%`, `GPU-OpenCV-OpenCL`, `GPU-MNN`, `NPU-Hailo8`), yielding 35 consecutive benchmark combinations. 
+This script iterates autonomously over the 5 supported YOLO11 models (`n`, `s`, `m`, `l`, `x`) and the 7 inference modes (`RKNPU-Auto`, `RKNPU-Distributed`, `CPU`, `CPU-50%`, `GPU-OpenCV-OpenCL`, `GPU-MNN`, `NPU-Hailo8`), yielding 35 consecutive benchmark combinations per stream count. `--instances` accepts multiple values (e.g. `--instances 3 1`), running the full matrix once per count — 70 iterations that fill both the multi-stream and single-stream comparison tables in one unattended execution.
 
 For each iteration, the script dynamically rewrites `config.ini`, invokes `main.py`, and waits for the benchmark timeout to conclude naturally, generating performance reports and CSV logs automatically. 
 
 ### Usage
 
+Run it as root **with the virtual-environment interpreter** (the script launches `main.py` with the same interpreter it is started with; the system Python lacks the project dependencies):
+
 ```bash
 # Run the complete test matrix with default settings
-python run_all_benchmarks.py
+sudo venv/bin/python3 run_all_benchmarks.py
 
 # Run with custom parallel streams and a 5-minute timeout per test
-python run_all_benchmarks.py --instances 1 --timeout 5
+sudo venv/bin/python3 run_all_benchmarks.py --instances 1 --timeout 5
+
+# Run the FULL matrix twice: with 3 parallel streams and then with 1
+sudo venv/bin/python3 run_all_benchmarks.py --instances 3 1
 
 # Display all available arguments
-python run_all_benchmarks.py --help
+venv/bin/python3 run_all_benchmarks.py --help
 ```
+
+> **Estimated duration:** each iteration runs until `inference_timeout_minutes` (default 15 min) plus analysis time — the full 35-combination matrix takes ~9 h, and a dual `--instances 3 1` sweep ~17.5 h. Plan for an overnight (or weekend) run.
 
 ### Logging
 The script features dual-logging. The complete output (including standard `main.py` progression) is mirrored simultaneously to the terminal console and to `run_all_benchmarks.log` in the project root to preserve historical results.
