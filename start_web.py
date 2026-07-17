@@ -1,18 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 fcascan
 """start_web.py
 Start CHAP-V Web Interface
-by fcascan 2026
 """
 
 import sys
 import os
 
-# Add the project root to Python path
+# Put the project root, src/ and src/rockchip/ on sys.path. The rockchip modules use flat,
+# co-located imports (e.g. `from coco_utils import ...`), so without src/rockchip on the path the
+# first Start-Processing crashes with ModuleNotFoundError. main.py gets this via app_launcher; this
+# standalone launcher must set it up itself.
 project_root = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, project_root)
+for _p in (project_root, os.path.join(project_root, "src"), os.path.join(project_root, "src", "rockchip")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # Import and start web server
 if __name__ == "__main__":

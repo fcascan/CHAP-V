@@ -3,7 +3,6 @@
 # =============================================================================
 # hailo_executor.py
 # YOLO11 inference on the Hailo-8 (26 TOPS) external NPU over M.2/PCIe, via HailoRT.
-# by fcascan 2026
 #
 # Why this exists:
 #   The Hailo-8 is a dedicated edge AI accelerator on the OrangePi's M.2 slot. This
@@ -31,11 +30,9 @@
 #   uses (preprocess_frame leaves 'hailo' on the uint8 branch). Normalization is
 #   baked into the HEF at compile time.
 #
-# >>> VALIDATION STATUS: the inference path (vstream creation + infer call + output
-#     dtype/layout) is written from the pyhailort 4.24 API surface + docs but has
-#     NOT been runtime-tested (requires a real .hef). Expect to fine-tune run() /
-#     the configure path during end-to-end validation, the way the MNN executor
-#     needed adjustments once it ran on real frames. <<<
+# VALIDATION STATUS: runtime-validated in production benchmarks (2026-07) — the full inference path
+#   (vstream creation, infer call, NHWC->NCHW output regroup) runs the threats_{N,S,M,L,X} HEFs at
+#   3 concurrent streams with detections matching the CPU path.
 #
 # HailoRT runtime install (one-time, already done on this device): HailoRT 4.24.0
 #   PCIe driver (DKMS) + runtime .deb + pyhailort cp312 aarch64 wheel.

@@ -4,7 +4,6 @@
 """web_camera_processing.py
 Camera processing with web interface integration.
 Each camera runs in its own thread so all NPU cores work in parallel.
-by fcascan 2026
 """
 import cv2
 import time
@@ -49,6 +48,17 @@ def _read_system_stats():
 def _camera_worker(idx, cap, engine, video_manager, processing_active_fn, output_dir, logger,
                    results_dir=None, run_timestamp=None, npu_core_id=None):
     """Process one camera stream until stopped or camera fails critically."""
+    # CPU-50%: pin this worker thread to the engine's core set (A76 big cluster), matching the
+    # benchmark-video worker. This thread participates in onnxruntime's intra-op pool, so pinning it
+    # keeps CPU inference off the A55 little cores. No-op for other modes (affinity None).
+    _aff = getattr(engine, 'cpu_affinity', None)
+    if _aff and hasattr(os, 'sched_setaffinity'):
+        try:
+            os.sched_setaffinity(0, set(int(c) for c in _aff))
+            logger.info(f"Camera {idx}: CPU worker pinned to cores {sorted(_aff)}")
+        except Exception:
+            pass
+
     display_timestamps = []
     inftime_buf = []
     failure_counter = 0
@@ -164,21 +174,52 @@ def process_cameras_web(yolo_postprocess_func=None, web_server=None):
     logger = get_web_logger()
 
     context = pyudev.Context()
-    video_devices = []
+    discovered = []
+    raw_nodes = []
     for device in context.list_devices(subsystem='video4linux'):
         devnode = device.device_node
-        if devnode and devnode.startswith('/dev/video'):
-            try:
-                video_devices.append(int(devnode.replace('/dev/video', '')))
-            except ValueError:
-                continue
+        if not (devnode and devnode.startswith('/dev/video')):
+            continue
+        try:
+            node = int(devnode.replace('/dev/video', ''))
+        except ValueError:
+            continue
+        raw_nodes.append(node)
+        # UVC webcams expose several /dev/video nodes: the true capture node
+        # (ID_V4L_CAPABILITIES contains 'capture') plus metadata/non-capture nodes.
+        # Keep only capture-capable nodes so a metadata node does not consume a
+        # MAX_INFERENCE_INSTANCES slot and hide a real camera (the original 2-of-3 bug).
+        capabilities = device.properties.get('ID_V4L_CAPABILITIES', '')
+        if 'capture' not in capabilities:
+            continue
+        id_path = device.properties.get('ID_PATH', '')
+        model = (device.properties.get('ID_MODEL', '')
+                 or device.properties.get('ID_V4L_PRODUCT', '')
+                 or 'Camera').replace('_', ' ')
+        if id_path.startswith('platform-'):
+            short_port = id_path[len('platform-'):].replace('.auto', '')
+        else:
+            short_port = id_path or 'unknown'
+        discovered.append({'node': node, 'path': id_path, 'label': f"{model} ({short_port})"})
 
-    video_devices = sorted(set(video_devices))[:MAX_INFERENCE_INSTANCES]
+    # Fallback: if the ID_V4L_CAPABILITIES property is unavailable on this system and the
+    # filter dropped everything, fall back to every /dev/video node so we never regress to
+    # "no cameras" on hardware that does not populate the capability string.
+    if not discovered and raw_nodes:
+        logger.warning("No capture-capable nodes reported by udev; falling back to all /dev/video nodes.")
+        discovered = [{'node': n, 'path': '', 'label': f"Camera ({n})"} for n in raw_nodes]
+
+    # Order by physical USB port (ID_PATH) so each camera number is stable and reproducible
+    # per port across reboots/replugs, instead of the non-deterministic udev enumeration order.
+    discovered.sort(key=lambda d: (d['path'], d['node']))
+    discovered = discovered[:MAX_INFERENCE_INSTANCES]
+
     cameras = []
-    for i in video_devices:
-        cap = cv2.VideoCapture(i)
+    for info in discovered:
+        cap = cv2.VideoCapture(info['node'])
         if cap.isOpened():
             cameras.append(cap)
+            logger.info(f"Camera {len(cameras) - 1}: /dev/video{info['node']} -> {info['label']}")
         else:
             cap.release()
 

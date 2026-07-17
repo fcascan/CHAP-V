@@ -529,11 +529,14 @@ if __name__ == '__main__':
             if writer is not None:
                 writer.write(frame)
 
-            # Always show window in video mode so 'q' key can be captured
-            cv2.imshow('YOLO11 Inference  [press q to stop]', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print('Stopped by user.')
-                break
+            # Show the window (and capture 'q') only when a display is available. Over SSH /
+            # headless (CHAPV_HEADLESS set) cv2.imshow aborts, so skip it — this interactive CLI
+            # path is normally reached with --img_show, but guard it anyway.
+            if not os.environ.get("CHAPV_HEADLESS"):
+                cv2.imshow('YOLO11 Inference  [press q to stop]', frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print('Stopped by user.')
+                    break
 
         cap.release()
         if writer is not None:

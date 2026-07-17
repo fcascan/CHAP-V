@@ -3,7 +3,6 @@
 # Copyright (C) 2026 fcascan
 """cli.py
 CLI argument parsing and console startup banner.
-by fcascan 2026
 """
 
 import argparse
@@ -11,9 +10,11 @@ import textwrap
 
 from .config import (
     BENCHMARK_MODE,
+    HAILO8_MODEL_PATH,
     IMG_SIZE,
     INFERENCE_DEVICE,
     MAX_INFERENCE_INSTANCES,
+    MNN_MODEL_PATH,
     MODEL_PATH,
     NPU_CORE_ASSIGNMENT,
     NMS_THRESHOLD,
@@ -102,8 +103,18 @@ def build_parser():
         "single-instance console overrides (max_inference_instances = 1 only)"
     )
     default_video_source = VIDEO_FILE_PATH if BENCHMARK_MODE else resolve_default_video_source()
-    default_model_path = ONNX_MODEL_PATH if INFERENCE_DEVICE in {"CPU", "GPU"} else MODEL_PATH
-    if not default_model_path or not default_model_path.endswith((".onnx", ".rknn", ".pt", ".torchscript")):
+    # Pick the default model per backend, mirroring create_yolo11_engine's dispatch. INFERENCE_DEVICE
+    # is already uppercased by config.py. (The old {"CPU","GPU"} set never matched CPU-50%/GPU-MNN/
+    # GPU-OPENCV-OPENCL/NPU-HAILO8 and silently handed them the .rknn model.)
+    if INFERENCE_DEVICE == "GPU-MNN":
+        default_model_path = MNN_MODEL_PATH
+    elif INFERENCE_DEVICE == "NPU-HAILO8":
+        default_model_path = HAILO8_MODEL_PATH
+    elif INFERENCE_DEVICE in {"CPU", "CPU-50%", "GPU-OPENCV-OPENCL"}:
+        default_model_path = ONNX_MODEL_PATH
+    else:  # RKNPU-AUTO / RKNPU-DISTRIBUTED
+        default_model_path = MODEL_PATH
+    if not default_model_path or not default_model_path.endswith((".onnx", ".rknn", ".mnn", ".hef", ".pt", ".torchscript")):
         default_model_path = MODEL_PATH
 
     console_group.add_argument("--model_path", default=default_model_path,

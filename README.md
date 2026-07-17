@@ -173,7 +173,7 @@ Every time inference finishes —whether manually stopped via the UI/console, or
 
 > **Graph Rendering Note:** When generating `.png` reports from benchmark runs with thousands of frames, the data is downsampled to ~300 points for visualization. By default (`graph_downsample_method = worst_case`), this is a **worst-case windowed downsampling** (plotting the maximum latency/usage and minimum FPS per window) to ensure instantaneous spikes are never lost. If you prefer to visualize the true visual average without spikes, you can set `graph_downsample_method = mean` in `config.ini` or use `--graph_method mean` in the automation script.
 
-## Automated Benchmark Suite
+## Automated Benchmark Script
 
 To facilitate exhaustive testing for research and performance comparison, the project includes an automation script: `run_all_benchmarks.py`.
 

@@ -101,18 +101,24 @@ def build_yolo11_argv(args):
 def run_console_mode(args):
     """Run console inference.
 
-    Single instance (MAX_INFERENCE_INSTANCES == 1): delegates to the Rockchip
-    yolo11_infer.py script, which supports --img_show / --img_save.
+    Interactive single instance (MAX_INFERENCE_INSTANCES == 1 AND one of
+    --img_show / --img_save / --debug_detections given): delegates to the
+    Rockchip yolo11_infer.py script, a manual visual test harness.
 
-    Multiple instances (MAX_INFERENCE_INSTANCES > 1): reuses the threaded web
-    processing functions (without a web server) so that MAX_INFERENCE_INSTANCES
-    and NPU_CORE_ASSIGNMENT are both honoured.
+    Everything else — every benchmark/camera run without interactive flags, and
+    all multi-instance runs — goes through the threaded web processing functions
+    (without a web server) so that per-frame CSV metrics, the inference-timeout
+    watchdog, benchmark_loop and NPU_CORE_ASSIGNMENT are all honoured, and so it
+    is headless-safe. This is what run_all_benchmarks.py drives, so a
+    single-stream (--instances 1) sweep records results exactly like a 3-stream
+    one instead of falling into the metrics-less runpy path.
     """
     if not setup_system():
         raise SystemExit(1)
 
-    if MAX_INFERENCE_INSTANCES > 1:
-        _run_console_multiinstance()
+    interactive = args.img_show or args.img_save or args.debug_detections
+    if MAX_INFERENCE_INSTANCES > 1 or not interactive:
+        _run_console_threaded()
         return
 
     infer_script, infer_argv = build_yolo11_argv(args)
@@ -125,8 +131,8 @@ def run_console_mode(args):
         sys.argv = original_argv
 
 
-def _run_console_multiinstance():
-    """Multi-instance console flow — reuses threaded web processing without a web server."""
+def _run_console_threaded():
+    """Threaded console flow (1..N streams) — reuses web processing without a web server."""
     if BENCHMARK_MODE:
         from ..web.web_video_processing import process_video_web
         process_video_web(web_server=None)

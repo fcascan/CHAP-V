@@ -1,6 +1,8 @@
 #!/bin/bash
+# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
 # setup.sh - Complete setup script for project
-# by fcascan 2026
 
 echo "======================================"
 echo " Project Setup (Orange Pi / RK3588)"
@@ -61,8 +63,8 @@ else
     echo "NPU runtime may fail unless the shared library is installed manually."
 fi
 
-# 6. Permissions
-chmod +x install_dependencies.py
+# 6. Permissions (the installer lives in src/; invoked via the interpreter, not executed directly)
+chmod +x src/install_dependencies.py 2>/dev/null || true
 
 echo ""
 echo "======================================"

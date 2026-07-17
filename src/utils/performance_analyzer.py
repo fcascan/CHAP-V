@@ -4,7 +4,6 @@
 # Copyright (C) 2026 fcascan
 """performance_analyzer.py
 Performance analysis and visualization module for CHAP-V processing metrics
-by fcascan 2026
 """
 
 import sys
@@ -789,19 +788,27 @@ def print_csv_analysis(csv_filepath):
         print(f"Error analyzing CSV: {e}")
 
 def find_latest_csv(device_name="NPU"):
-    """Find the most recent performance CSV file"""
+    """Find the most recent performance CSV file.
+
+    Files are named '<YYYYMMDD_HHMMSS>_performance_metrics_<DEVICE>[_coreN]_<label>.csv' (timestamp
+    PREFIX), so the glob must allow a leading '*'. The results dir is resolved relative to this file
+    so it works regardless of the current working directory.
+    """
+    results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "processing", "results")
     search_patterns = [
-        f"performance_metrics_{device_name}_*.csv",
-        f"src/processing/results/performance_metrics_{device_name}_*.csv"
+        f"*_performance_metrics_{device_name}_*.csv",
+        f"src/processing/results/*_performance_metrics_{device_name}_*.csv",
+        os.path.join(results_dir, f"*_performance_metrics_{device_name}_*.csv"),
     ]
-    
+
     csv_files = []
     for pattern in search_patterns:
         csv_files.extend(glob.glob(pattern))
-    
+
     if not csv_files:
         return None
-    
+
     return max(csv_files, key=os.path.getmtime)
 
 def main():

@@ -3,7 +3,6 @@
 # Copyright (C) 2026 fcascan
 """yolo11_inference.py
 YOLO11 Inference Engine Integration
-by fcascan 2026
 """
 import os
 import cv2
@@ -291,7 +290,7 @@ class YOLO11InferenceEngine:
                 logging.warning(f"Error releasing model: {e}")
 
 
-def create_yolo11_engine(device_type="NPU", npu_core_id=None, cpu_threads=None, cpu_affinity=None):
+def create_yolo11_engine(device_type="RKNPU-AUTO", npu_core_id=None, cpu_threads=None, cpu_affinity=None):
     """
     Factory function to create YOLO11 inference engine based on configuration.
 
@@ -387,7 +386,7 @@ def yolo11_postprocess_wrapper(outputs, original_shape):
 # Global inference engine instance (singleton pattern)
 _global_engine = None
 
-def get_global_yolo11_engine(device_type="NPU"):
+def get_global_yolo11_engine(device_type="RKNPU-AUTO"):
     """
     Get or create global YOLO11 inference engine instance.
     Uses singleton pattern to avoid recreating the engine multiple times.
