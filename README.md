@@ -285,22 +285,49 @@ print('Device:', d.name(), '| vendor:', d.vendorName(), '| OpenCL', d.OpenCLVers
 # Expected: haveOpenCL: True   Device: Mali-G610 r0p0 | vendor: ARM | OpenCL OpenCL 3.0 ...
 ```
 
-### Observed performance (benchmark.mp4, 1 stream, detectS2, obj 0.5)
+### Observed performance
 
-| Mode | Backend | Inference (ms/frame) | FPS | Saturated unit |
-|------|---------|----------------------|-----|----------------|
-| RKNPU             | RKNN (rknnlite) | ~33 | ~29 | RKNPU |
-| CPU               | ONNX Runtime (all 8 cores) | ~127 | ~7.6 | CPU 100% |
-| CPU-50%           | ONNX Runtime (4 A76 threads) | ~340 | ~3 | CPU ~48% (A55 cores idle) |
-| GPU-OpenCV-OpenCL | OpenCV-DNN / OpenCL (Mali) | ~2400 | ~0.4 | GPU ~70–100% |
-| GPU-MNN (fp16)    | MNN / OpenCL (Mali) | ~140 | ~7 | GPU |
-| GPU-MNN (fp32)    | MNN / OpenCL (Mali) | ~260 | ~4 | GPU |
-| NPU-Hailo8        | HailoRT (Hailo-8, 26 TOPS) | _pending_ | _pending_ | Hailo-8 |
+Full benchmark campaign: the retrained `threats_{N,S,M,L,X}` models (YOLO11 n/s/m/l/x) on
+`benchmark.mp4`, `obj 0.5`, 15 min per combination, across the **7 inference modes** at both **1 and
+3 concurrent streams** (5 × 7 × 2 = 70 runs). The snapshot below is per-stream FPS at 3 concurrent
+streams — the multi-camera scenario; the complete dataset (inference time, per-core CPU/NPU/GPU/Hailo
+load, temperature, power, detection rate, effective TOPS, FPS/W, annual-energy projection) lives in
+the project's measurement spreadsheet and the **thesis this project is based on**, which hold the
+detailed analysis.
 
-All modes produce correct, matching detections. GPU-OpenCV-OpenCL is slowest; **GPU-MNN is the fast,
-correct GPU path** (~18× faster than OpenCV-OpenCL, ~CPU-parity in speed while offloading the CPU —
-see [GPU-MNN Inference](#gpu-mnn-inference-mali-g610)). Figures are approximate; the first GPU-MNN run
-adds a one-time ~50 s OpenCL kernel auto-tuning.
+**FPS per stream — 3 concurrent streams:**
+
+| Model | RKNPU-Auto | RKNPU-Distributed | CPU | CPU-50% | GPU-OpenCV-OpenCL | GPU-MNN | NPU-Hailo8 |
+|---|---|---|---|---|---|---|---|
+| Nano (n)    | 12.5 | **22.4** | 2.6 | 3.1 | 0.5  | 6.7 | 20.0 |
+| Small (s)   | 8.3  | **15.8** | 1.0 | 1.1 | 0.1  | 2.9 | 17.2 |
+| Medium (m)  | 3.6  | 7.7      | 0.4 | 0.4 | 0.04 | 1.3 | **10.2** |
+| Large (l)   | 2.9  | 6.4      | 0.3 | 0.3 | 0.03 | 1.1 | 5.9 |
+| X-Large (x) | 1.4  | 3.4      | 0.2 | 0.2 | 0.01 | 0.5 | **3.4** |
+
+(At **1 stream** Hailo-8 dominates every size — e.g. 36.5 FPS on Nano, 7.5 FPS on X-Large — and
+RKNPU-Auto ≈ RKNPU-Distributed; those figures are in the spreadsheet.)
+
+**Key findings**
+
+- **RKNPU-Distributed ≈ 1.8× RKNPU-Auto for multi-stream:** Auto pins all streams to NPU **core 0**
+  (which saturates 71 % → 96 % as the model grows), while Distributed pins one stream per core,
+  spreading load evenly across **all three** (~45 % → ~85 % each). With a *single* stream there is
+  nothing to distribute, so Auto ≈ Distributed (both use core 0 only).
+- **Hailo-8 wins the larger models** (Medium/X-Large) and dominates all sizes at 1 stream, drawing
+  only **~0.9 W** of module power — yet it reads ~60–90 % occupancy because the single-process,
+  GIL-bound host pipeline cannot keep its queue full: it is **host-bound, not compute-bound** (real
+  effective throughput is a small fraction of its 26-TOPS peak).
+- **GPU-MNN is ~14–18× faster than GPU-OpenCV-OpenCL** and offloads the CPU; GPU-OpenCV-OpenCL is
+  kept only as a correctness baseline (pathologically slow). See
+  [GPU-MNN Inference](#gpu-mnn-inference-mali-g610). The first GPU-MNN run adds a one-time ~50 s
+  OpenCL kernel auto-tuning.
+- **CPU-50%** matches or slightly beats full CPU at 1 stream (4 fast A76 threads vs 8 mixed cores)
+  while leaving the A55 cluster free; under 3 streams it trades throughput for headroom.
+- All modes produce correct, matching detections.
+
+> For the in-depth analysis — efficiency (FPS/W), effective TOPS and TOPS/W, throughput scaling and
+> the 24/7 annual-energy projection — see the thesis and the measurement spreadsheet.
 
 > The first GPU run auto-tunes the OpenCL convolution kernels (slower first frame); the tuned
 > configs are cached under `~/.cache/CHAP-V/ocl4dnn`, so later runs start faster.
