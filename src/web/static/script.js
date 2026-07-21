@@ -336,43 +336,63 @@ class CHAPVWebInterface {
         }
     }
 
+    formatElapsed(s) {
+        // Elapsed time since processing started, as HH:MM:SS.
+        if (!s || s <= 0) return '00:00:00';
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = Math.floor(s % 60);
+        const p = (n) => String(n).padStart(2, '0');
+        return `${p(h)}:${p(m)}:${p(sec)}`;
+    }
+
     async refreshStatus() {
         try {
             const response = await fetch('/api/status');
             const status = await response.json();
-            
+
             // Update info panel
-            document.getElementById('info-mode').textContent = 
+            document.getElementById('info-mode').textContent =
                 status.current_mode.charAt(0).toUpperCase() + status.current_mode.slice(1);
             document.getElementById('info-device').textContent = status.inference_device;
             document.getElementById('info-model').textContent = status.active_model || 'None loaded';
-            document.getElementById('info-processing').textContent = 
+            document.getElementById('info-processing').textContent =
                 status.processing_active ? 'Active' : 'Stopped';
-            document.getElementById('info-frame').textContent = 
-                status.frame_available ? 'Available' : 'Not Available';
-            
+            document.getElementById('info-elapsed').textContent =
+                status.processing_active ? this.formatElapsed(status.elapsed_seconds) : '—';
+
             // Update button states
             const startBtn = document.getElementById('start-btn');
             const stopBtn = document.getElementById('stop-btn');
             const saveConfigBtn = document.getElementById('save-config-btn');
-            
+
             // Update internal processing state
             this.processing_active = status.processing_active;
-            
+
+            // Controls locked while a run is in progress: the three "Download Latest…" buttons and every
+            // Configuration dropdown (changing config mid-run would desync the running engine from the
+            // reported configuration).
+            const lockWhileProcessing = [
+                ...document.querySelectorAll('#download-csv-btn, #download-analysis-btn, #download-reports-btn'),
+                ...document.querySelectorAll('#config-form select'),
+            ];
+
             if (status.processing_active) {
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 if (saveConfigBtn) saveConfigBtn.disabled = true;
+                lockWhileProcessing.forEach(el => { el.disabled = true; });
                 this.updateConnectionStatus('processing');
             } else {
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
                 if (saveConfigBtn) saveConfigBtn.disabled = false;
+                lockWhileProcessing.forEach(el => { el.disabled = false; });
                 if (this.connectionStatus !== 'disconnected') {
                     this.updateConnectionStatus('connected');
                 }
             }
-            
+
         } catch (error) {
             console.error('Error refreshing status:', error);
             this.updateConnectionStatus('disconnected');

@@ -132,6 +132,24 @@ def downsample(data, sample_size, method='max'):
             sampled.append(sum(window) / len(window))
     return sampled
 
+
+def _draw_downsample_label(draw, method, right_x, title_y, font):
+    """Right-align a small gray '[downsample: <method>]' tag at right_x, level with a graph title.
+
+    Tells the reader which per-window sample each series plots (max / min / mean) for the sampling
+    window, so a 'worst-case' latency (max) is not mistaken for an average, etc."""
+    label = f"[downsample: {method}]"
+    try:
+        w = draw.textlength(label, font=font)
+    except Exception:
+        try:
+            bbox = draw.textbbox((0, 0), label, font=font)
+            w = bbox[2] - bbox[0]
+        except Exception:
+            w = len(label) * 6
+    draw.text((right_x - w, title_y + 4), label, fill='gray', font=font)
+
+
 def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=None, model_name=None,
                                 benchmark_video=None, camera_index=None, inference_device=None):
     """
@@ -279,6 +297,13 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         from src.core.config import GRAPH_DOWNSAMPLE_METHOD
         method_max = 'mean' if GRAPH_DOWNSAMPLE_METHOD == 'mean' else 'max'
         method_min = 'mean' if GRAPH_DOWNSAMPLE_METHOD == 'mean' else 'min'
+        # Per-graph downsample method, shown next to each title. In 'worst_case' mode the worst sample
+        # per window is plotted: MAX for latency and resource utilization (higher = worse), MIN for FPS
+        # (lower = worse). Switch graph_downsample_method to 'mean' in config.ini to plot the window
+        # mean on every graph instead.
+        method_infer = method_max
+        method_fps = method_min
+        method_usage = method_max
         
         # Draw title
         title = f"Performance Analysis Report"
@@ -361,6 +386,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         # Draw inference time graph
         draw.rectangle([20, graph_y, 20 + graph_width, graph_y + graph_height], outline='black', width=2)
         draw.text((20, graph_y - 25), "Inference Time Over Time (ms)", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_infer, 20 + graph_width, graph_y - 25, small_font)
         
         if len(inference_times) > 0:
             max_val = max(inference_times)
@@ -370,7 +396,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
             # Sample data points if too many
             sample_size = min(300, len(inference_times))
             step = len(inference_times) // sample_size if sample_size > 0 else 1
-            sampled_data = downsample(inference_times, sample_size, method=method_max)
+            sampled_data = downsample(inference_times, sample_size, method=method_infer)
             
             # Draw grid lines with time intervals
             for i in range(5):
@@ -446,6 +472,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         graph2_x = 720
         draw.rectangle([graph2_x, graph_y, graph2_x + graph_width, graph_y + graph_height], outline='black', width=2)
         draw.text((graph2_x, graph_y - 25), "FPS Over Time", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_fps, graph2_x + graph_width, graph_y - 25, small_font)
         
         if len(fps_data) > 0:
             max_fps = max(fps_data)
@@ -456,7 +483,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
             fps_upper_bound = max_fps + 10
             fps_range = fps_upper_bound - fps_lower_bound if fps_upper_bound != fps_lower_bound else 1
             
-            sampled_fps = downsample(fps_data, sample_size, method='mean')
+            sampled_fps = downsample(fps_data, sample_size, method=method_fps)
             
             # Draw grid lines
             for i in range(5):
@@ -494,6 +521,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         draw.rectangle([graph4_x, graph4_y, graph4_x + graph4_width, graph4_y + graph4_height], outline='black', width=2)
         _npu_title = f"RKNPU Core {npu_core_id} Usage (%)" if npu_core_id is not None else "RKNPU Usage (%)"
         draw.text((graph4_x, graph4_y - 25), _npu_title, fill='black', font=font_large)
+        _draw_downsample_label(draw, method_usage, graph4_x + graph4_width, graph4_y - 25, small_font)
         
         if len(npu_core0) > 0:
             sampled_npu = downsample(npu_core0, sample_size, method='mean')
@@ -528,6 +556,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         graph5_height = 140
         draw.rectangle([graph5_x, graph5_y, graph5_x + graph5_width, graph5_y + graph5_height], outline='black', width=2)
         draw.text((graph5_x, graph5_y - 25), "CPU Usage (%)", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_usage, graph5_x + graph5_width, graph5_y - 25, small_font)
         
         if len(cpu_usage) > 0:
             sampled_cpu = downsample(cpu_usage, sample_size, method='mean')
@@ -567,6 +596,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
 
         draw.rectangle([graph3_x, graph3_y, graph3_x + graph_width, graph3_y + graph3_height], outline='black', width=2)
         draw.text((graph3_x, graph3_y - 25), "Hailo Occupancy (%)", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_usage, graph3_x + graph_width, graph3_y - 25, small_font)
 
         if len(hailo_usage) > 0:
             sampled_hailo = downsample(hailo_usage, sample_size, method='mean')
@@ -617,6 +647,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         graph6_height = graph3_height
         draw.rectangle([graph6_x, graph6_y, graph6_x + graph6_width, graph6_y + graph6_height], outline='black', width=2)
         draw.text((graph6_x, graph6_y - 25), "GPU Usage (%)", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_usage, graph6_x + graph6_width, graph6_y - 25, small_font)
 
         if len(gpu_usage) > 0:
             sampled_gpu = downsample(gpu_usage, sample_size, method='mean')
@@ -651,6 +682,7 @@ def generate_performance_reports(csv_filepath, output_path=None, npu_core_id=Non
         cmp_height = 320
         draw.rectangle([cmp_x, cmp_y, cmp_x + cmp_width, cmp_y + cmp_height], outline='black', width=2)
         draw.text((cmp_x, cmp_y - 25), "Comparison (%)", fill='black', font=font_large)
+        _draw_downsample_label(draw, method_usage, cmp_x + cmp_width, cmp_y - 25, small_font)
 
         for i in range(5):
             y_grid = cmp_y + (i * cmp_height // 4)

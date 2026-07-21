@@ -55,6 +55,7 @@ class WebServer:
         # Processing control
         self.processing_active = False
         self.processing_thread = None
+        self.processing_start_time = None   # epoch seconds when the current run started (for elapsed time)
         
         # Model tracking
         self.active_model_name = None
@@ -328,6 +329,7 @@ class WebServer:
                 # Start processing in separate thread
                 self.processing_thread = threading.Thread(target=self._run_processing, daemon=True)
                 self.processing_active = True
+                self.processing_start_time = time.time()
                 self.processing_thread.start()
                 
                 return jsonify({'status': 'success', 'message': 'Processing started'})
@@ -354,12 +356,16 @@ class WebServer:
             # Import fresh values to ensure we get the latest configuration
             from ..core.config import BENCHMARK_MODE, INFERENCE_DEVICE
             
+            elapsed = 0
+            if self.processing_active and self.processing_start_time:
+                elapsed = int(time.time() - self.processing_start_time)
             status = {
                 'processing_active': self.processing_active,
                 'current_mode': 'benchmark' if BENCHMARK_MODE else 'camera',
                 'inference_device': INFERENCE_DEVICE,
                 'active_model': self.active_model_name,
-                'frame_available': self.video_manager.get_latest_frame() is not None
+                'frame_available': self.video_manager.get_latest_frame() is not None,
+                'elapsed_seconds': elapsed
             }
             return jsonify(status)
             
