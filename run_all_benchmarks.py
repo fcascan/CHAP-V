@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 fcascan
+"""run_all_benchmarks.py
+Automate benchmarking across multiple models and inference modes for CHAP-V.
+"""
+
 import os
 import sys
 import argparse
@@ -110,15 +118,15 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
-  # Run all tests with default settings
+  # Default: run the FULL suite at BOTH 3 and 1 instances (fills both spreadsheet
+  # tables), 15-minute timeout per benchmark
   python run_all_benchmarks.py
 
-  # Run with custom instances and timeout
-  python run_all_benchmarks.py --instances 1 --timeout 5
+  # Only the 3-instance sweep (or only 1-instance: --instances 1)
+  python run_all_benchmarks.py --instances 3
 
-  # Run the FULL suite twice: first with 3 parallel streams, then with 1
-  # (fills both tables of the measurements spreadsheet in one execution)
-  python run_all_benchmarks.py --instances 3 1
+  # Both instance counts, explicit, with a custom 5-minute timeout
+  python run_all_benchmarks.py --instances 3 1 --timeout 5
 
   # Run only 1 iteration of benchmark_loop
   python run_all_benchmarks.py --no-loop
@@ -136,12 +144,13 @@ Examples:
                         help="Disable continuous loop (stops after video ends).")
                         
     parser.add_argument('--instances', type=int, nargs='+', default=None,
-                        help="Parallel inference stream count(s) (max_inference_instances). "
-                             "Accepts several values (e.g. --instances 3 1) to run the whole "
-                             "suite once per count.")
-                        
-    parser.add_argument('--timeout', type=int, default=None,
-                        help='Inference timeout in minutes')
+                        help="Parallel inference stream count(s) (max_inference_instances). Runs the "
+                             "whole 35-combo suite once per value. Omit to run BOTH 3 and 1 instances "
+                             "(the default); or pass one/more counts, e.g. --instances 1  /  "
+                             "--instances 3  /  --instances 3 1.")
+
+    parser.add_argument('--timeout', type=int, default=15,
+                        help='Inference timeout in minutes per benchmark (default: 15).')
     parser.add_argument('--ignore_frames', type=int, default=None,
                         help='Number of initial frames to ignore in analysis')
     parser.add_argument('--ignore_final_frames', type=int, default=None,
@@ -169,7 +178,9 @@ Examples:
     
     config_path = 'config.ini'
     # One full sweep per requested instance count ([None] = single sweep, config.ini value untouched)
-    instances_list = args.instances if args.instances else [None]
+    # No --instances given -> run BOTH the 3-instance and 1-instance sweeps (fills both spreadsheet
+    # tables in one execution). Otherwise run one sweep per requested count.
+    instances_list = args.instances if args.instances else [3, 1]
     total_combinations = len(models) * len(modes) * len(instances_list)
     current_iteration = 0
 
@@ -177,7 +188,7 @@ Examples:
         for model_size in models:
             for mode in modes:
                 current_iteration += 1
-                inst_label = instances if instances is not None else 'config'
+                inst_label = instances
                 logger.info("-" * 60)
                 logger.info(f"Running iteration {current_iteration}/{total_combinations} -> Model: {model_size} | Mode: {mode} | Instances: {inst_label}")
 

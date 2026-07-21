@@ -177,29 +177,34 @@ Every time inference finishes —whether manually stopped via the UI/console, or
 
 To facilitate exhaustive testing for research and performance comparison, the project includes an automation script: `run_all_benchmarks.py`.
 
-This script iterates autonomously over the 5 supported YOLO11 models (`n`, `s`, `m`, `l`, `x`) and the 7 inference modes (`RKNPU-Auto`, `RKNPU-Distributed`, `CPU`, `CPU-50%`, `GPU-OpenCV-OpenCL`, `GPU-MNN`, `NPU-Hailo8`), yielding 35 consecutive benchmark combinations per stream count. `--instances` accepts multiple values (e.g. `--instances 3 1`), running the full matrix once per count — 70 iterations that fill both the multi-stream and single-stream comparison tables in one unattended execution.
+This script iterates autonomously over the 5 supported YOLO11 models (`n`, `s`, `m`, `l`, `x`) and the 7 inference modes (`RKNPU-Auto`, `RKNPU-Distributed`, `CPU`, `CPU-50%`, `GPU-OpenCV-OpenCL`, `GPU-MNN`, `NPU-Hailo8`), yielding 35 benchmark combinations per stream count.
 
-For each iteration, the script dynamically rewrites `config.ini`, invokes `main.py`, and waits for the benchmark timeout to conclude naturally, generating performance reports and CSV logs automatically. 
+**Defaults (no flags):** runs the full matrix at **both 3 and 1 instances** (70 iterations — filling both the multi-stream and single-stream comparison tables in one unattended execution) with a **15-minute timeout** per benchmark. Override with:
+
+- `--instances` — one or more stream counts; runs the full matrix once per value. `--instances 3` or `--instances 1` for a single count, `--instances 3 1` for both (same as the default).
+- `--timeout` — minutes per benchmark (default `15`).
+
+For each iteration, the script dynamically rewrites `config.ini` (setting `max_inference_instances` and `inference_timeout_minutes`), invokes `main.py`, and waits for the timeout to conclude naturally, generating performance reports and CSV logs automatically.
 
 ### Usage
 
 Run it as root **with the virtual-environment interpreter** (the script launches `main.py` with the same interpreter it is started with; the system Python lacks the project dependencies):
 
 ```bash
-# Run the complete test matrix with default settings
+# Default: full matrix at BOTH 3 and 1 instances, 15-min timeout (fills both tables)
 sudo venv/bin/python3 run_all_benchmarks.py
 
-# Run with custom parallel streams and a 5-minute timeout per test
-sudo venv/bin/python3 run_all_benchmarks.py --instances 1 --timeout 5
+# Only the 3-instance sweep (or only 1-instance: --instances 1)
+sudo venv/bin/python3 run_all_benchmarks.py --instances 3
 
-# Run the FULL matrix twice: with 3 parallel streams and then with 1
-sudo venv/bin/python3 run_all_benchmarks.py --instances 3 1
+# Both instance counts, explicit, with a custom 5-minute timeout
+sudo venv/bin/python3 run_all_benchmarks.py --instances 3 1 --timeout 5
 
 # Display all available arguments
 venv/bin/python3 run_all_benchmarks.py --help
 ```
 
-> **Estimated duration:** each iteration runs until `inference_timeout_minutes` (default 15 min) plus analysis time — the full 35-combination matrix takes ~9 h, and a dual `--instances 3 1` sweep ~17.5 h. Plan for an overnight (or weekend) run.
+> **Estimated duration:** each iteration runs until the timeout (default 15 min) plus analysis time — a single 35-combination sweep (`--instances 3`) takes ~9 h, and the default dual (3 + 1 instances) ~17.5 h.
 
 ### Logging
 The script features dual-logging. The complete output (including standard `main.py` progression) is mirrored simultaneously to the terminal console and to `run_all_benchmarks.log` in the project root to preserve historical results.
